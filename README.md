@@ -1,2 +1,1 @@
-# fibrations_in_dnns
-Fibrations in Deep Neural Networks
+# Fibrations in Deep Neural Networks
