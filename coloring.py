@@ -19,7 +19,7 @@ def fibration_linear(weights, in_clusters, threshold, first_layer = False, bias=
 		    collapse_weights[:, color] = weights[:, indices_k].sum(axis=1)
 
 	if bias is not None:
-		collapse_weights = cat((colapse_weight, bias), dim=1)
+		collapse_weights = cat((colapse_weights, bias.unsqueeze(1)), dim=1)
 
 	collapse_weights_norm = normalize(collapse_weights, dim=1)
 	distance = 1 - mm(collapse_weights_norm, collapse_weights_norm.T)
@@ -37,7 +37,7 @@ def fibration_linear(weights, in_clusters, threshold, first_layer = False, bias=
 
 # ====================================================================
 
-def fibration_conv2d(weights, in_clusters, threshold, first_layer = False):
+def fibration_conv2d(weights, in_clusters, threshold, first_layer = False, bias=None):
 	out_n, in_n, hx, hy = weights.shape
 	weights = weights.view(out_n, in_n, -1)
 
@@ -52,6 +52,9 @@ def fibration_conv2d(weights, in_clusters, threshold, first_layer = False):
 		    collapse_weights[:, color, :] = weights[:, indices_k, :].sum(axis=1)
 
 		collapse_weights = collapse_weights.view(out_n,-1)
+
+	if bias is not None:
+		collapse_weights = cat((colapse_weights, bias.unsqueeze(1)), dim=1)
 
 	collapse_weights_norm = normalize(collapse_weights, dim=1)
 	distance = 1 - mm(collapse_weights_norm, collapse_weights_norm.T)
