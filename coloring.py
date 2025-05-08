@@ -5,7 +5,7 @@ from torch import zeros, mm, cat, tensor
 
 # ====================================================================
 
-def fibration_linear(weights, in_clusters, threshold, first_layer = False):
+def fibration_linear(weights, in_clusters, threshold, first_layer = False, bias=None):
 	dim_out, dim_in  = weights.shape
 
 	if first_layer:
@@ -17,6 +17,9 @@ def fibration_linear(weights, in_clusters, threshold, first_layer = False):
 		for color in in_clusters: 
 		    indices_k = where(in_clusters == color)[0]
 		    collapse_weights[:, color] = weights[:, indices_k].sum(axis=1)
+
+	if bias is not None:
+		collapse_weights = cat((colapse_weight, bias), dim=1)
 
 	collapse_weights_norm = normalize(collapse_weights, dim=1)
 	distance = 1 - mm(collapse_weights_norm, collapse_weights_norm.T)
