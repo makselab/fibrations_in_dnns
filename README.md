@@ -13,8 +13,7 @@ Each subproject has its own documentation and requirements:
    - See [MNIST_Symmetries/README.md](MNIST_Symmetries/README.md) for detailed instructions
 
 2. **For IMAGENET_symmetries**:
-   - See [ImageNET_Symmetries/README.md](ImageNet_Symmetries/README.md) for specific instructions
-
+   - See [ImageNET_Symmetries/README.md](ImageNET_Symmetries/README.md) for specific instructions
 
 ## Contact
 For questions: ovelarde@ccny.cuny.edu
