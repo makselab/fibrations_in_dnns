@@ -1,0 +1,18 @@
+{
+    "optimizer": {
+        "name": "SGD",
+        "cfg": {
+            "lr": 0.01,
+            "weight_decay": 0,
+            "momentum": 0.9}
+    },
+    "agent": {
+        "name": "CBP",
+        "cfg": {
+            "init":"default",
+            "replacement_rate":3e-4,
+            "decay_rate":0.99,
+            "util_type":"adaptable_contribution",
+            "maturity_threshold":100}
+    }
+}

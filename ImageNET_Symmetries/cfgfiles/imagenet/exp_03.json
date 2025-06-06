@@ -1,0 +1,16 @@
+{
+    "optimizer": {
+        "name": "SGD",
+        "cfg": {
+            "lr": 0.01,
+            "weight_decay": 0,
+            "momentum": 0.9}
+    },
+    "agent": {
+        "name": "BreakSymm",
+        "cfg": {
+            "init":"default",
+            "replacement_rate":3e-4,
+            "maturity_threshold":100}
+    }
+}

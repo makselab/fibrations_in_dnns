@@ -1,0 +1,13 @@
+{
+    "optimizer": {
+        "name": "SGD",
+        "cfg": {
+            "lr": 0.01,
+            "weight_decay": 0,
+            "momentum": 0.9}
+    },
+    "agent": {
+        "name": "BP",
+        "cfg": 0
+    }
+}
