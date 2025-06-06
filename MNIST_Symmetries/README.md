@@ -45,8 +45,7 @@ Define the correct paths in the various scripts for saving the dataset (`dataPAT
   - Results saved in `coloring/fibration_batch_bb.pth` for thresholds `(0, 0.01, ..., 1.00)`.
 
 - **`synchronization_clusters.py`**: Computes synchronization clusters per layer using random-input activity.
-  - Requires `epsilon` parameter (100 values between `0` and `30`).
-  - *Note: `epsilon` depends on activity distribution (normalization WIP).*
+  - Requires `epsilon` parameter (100 values between `0` and `2`).
   - Results saved in `clustering/clusters_batch_599.pth` for step `bb = 599`.
 
 ---
@@ -63,3 +62,17 @@ Define the correct paths in the various scripts for saving the dataset (`dataPAT
 - **`matching.py`**: Establishes relationship between:
   - `epsilon` (synchronization clusters)
   - `threshold` (fibration symmetries)
+
+ ---
+
+### Reproducing the results
+To reproduce the results shown in the `plots/` directory, execute the following scripts (src) in order (python ...):
+- training.py
+- generate_activity.py
+- fibration_coloring.py
+- synchronization_clusters.py
+- collapse_during_training.py
+- collapse_post_training.py
+- plt_during_training.py
+- plt_post_training.py
+- matching.py
