@@ -39,6 +39,8 @@ Define the correct paths in the .sh scripts for saving the data (`PATHDATA`) and
 
 ### Reproducing the results
 To reproduce the results shown in the `results/` directory, execute the following scripts in order:
-- main_imagenet.sh
-- coloring_imagenet.sh
-- plotting_imagenet.sh
+- main_imagenet.sh exp
+- coloring_imagenet.sh exp
+- plotting_imagenet.sh exp
+
+where exp = 01, 02, 03
