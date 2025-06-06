@@ -10,10 +10,10 @@ This repository contains two independent subprojects exploring symmetry concepts
 Each subproject has its own documentation and requirements:
 
 1. **For MNIST_symmetries**:
-   - See [MNIST_symmetries/README.md](MNIST_symmetries/README.md) for detailed instructions
+   - See [MNIST_Symmetries/README.md](MNIST_symmetries/README.md) for detailed instructions
 
 2. **For IMAGENET_symmetries**:
-   - See [IMAGENET_symmetries/README.md](IMAGENET_symmetries/README.md) for specific instructions
+   - See [ImageNET_Symmetries/README.md](IMAGENET_symmetries/README.md) for specific instructions
 
 
 ## Contact
