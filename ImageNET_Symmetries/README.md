@@ -44,3 +44,5 @@ To reproduce the results shown in the `results/` directory, execute the followin
 - plotting_imagenet.sh exp
 
 where exp = 01, 02, 03
+
+These scripts generate multiple plots simultaneously. A summary of the results is provided in **Comparison_Performance.pdf** and **Num_Covers.png**, which showcase the evolution of accuracy and the number of coverings across the three experiments (SGD, Continual Learning, and Breaking Symmetry).
