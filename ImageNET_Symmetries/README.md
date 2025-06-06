@@ -1,4 +1,4 @@
-# MLP Fibration Symmetry Analysis
+# Training Convolutional Network using SGD, Continual Learning and Breaking Symmetry
 
 ## Initial Setup
 
