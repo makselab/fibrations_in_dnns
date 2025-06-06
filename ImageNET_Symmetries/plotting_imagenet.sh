@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TITLE='exp_'$1
-NUM_TASKS=$2
+NUM_TASKS=5000
 PATHDATA='/media/osvaldo/OMV5TB/BreakingSymmetry/results/ImageNet/'$TITLE'/run_1/performance/'
 PATHRES='/home/osvaldo/Documents/CCNY/Project_BreakingSymmetry/results/ImageNet/'$TITLE'/'
 SYMMETRIES=("fibrations" "optfibrations" "covering")
