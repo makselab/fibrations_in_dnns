@@ -1,0 +1,16 @@
+{
+  "model": {
+    "name": "MLP",
+    "layers": [500,500,500]
+  },
+  "training": {
+    "batch_size": 100,
+    "lr": 0.001,
+    "optimizer": "adam"
+  },
+  "data": {
+    "input_size": 784,
+    "num_classes": 10,
+    "dataset_path": "/home/osvaldo/Documents/CCNY/MNIST_Symmetries/"
+  }
+}
