@@ -1,5 +1,199 @@
 # MLP Fibration Symmetry Analysis
 
+Research into structural symmetries of trained neural networks — specifically **fibrations**, **opfibrations**, and **coverings** in the weight graph — and their use for principled network compression.
+
+---
+
+## Table of Contents
+
+1. [Installation](#installation)
+2. [Dataset](#dataset)
+3. [Model](#model)
+4. [Hardware & Environment](#hardware--environment)
+
+---
+
+## Installation
+
+### Requirements
+
+- Python 3.8
+- CUDA 11.3 compatible GPU (tested on NVIDIA Quadro RTX 6000)
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/OsvaVelarde/fibrations_in_dnns.git
+cd fibrations_in_dnns/MNIST_Symmetries
+```
+
+### 2. Create a virtual environment (recommended)
+
+```bash
+python3.8 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install PyTorch with CUDA support
+
+```bash
+pip install torch==1.12.1+cu113 torchvision==0.13.1+cu113 \
+    --extra-index-url https://download.pytorch.org/whl/cu113
+```
+
+### 4. Install remaining dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Configure paths
+
+Edit `cfgfiles/exp_01.json` and set `dataset_path` to the directory where MNIST will be downloaded:
+
+```json
+"data": {
+    "dataset_path": "/path/to/your/data/"
+}
+```
+
+The dataset will be downloaded automatically on the first run of `training.py`.
+
+### 6. Verify installation
+
+```bash
+python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+```
+
+Expected output:
+```
+CUDA available: True
+```
+
+---
+
+## Dataset
+
+The experiments use the [MNIST](http://yann.lecun.com/exdb/mnist/) dataset of handwritten digits.
+
+| Property | Value |
+|----------|-------|
+| **Input size** | 28 × 28 grayscale images → flattened to 784-dimensional vector |
+| **Classes** | 10 (digits 0–9) |
+| **Training samples** | 60,000 |
+| **Test samples** | 10,000 |
+
+### Accessing the Dataset
+
+The dataset is downloaded automatically by `torchvision` on the first run of `training.py`:
+
+```python
+from torchvision.datasets import MNIST
+MNIST(root=dataPATH, train=True, download=True)
+```
+
+A local copy of the raw files is also included in `MNIST/raw/`.
+
+### Preprocessing
+
+The only preprocessing applied is `torchvision.transforms.ToTensor()`, which:
+- Converts PIL images to PyTorch tensors
+- Rescales pixel values from **[0, 255]** to **[0.0, 1.0]**
+
+Images are then flattened from (1, 28, 28) to a 784-dimensional vector before being fed to the MLP:
+
+```python
+images = images.view(-1, 784)
+```
+
+No normalization, augmentation, or additional transforms are applied.
+
+### Data Splitting
+
+The standard MNIST split is used without modification:
+
+| Split | Samples | Shuffle | Batch size |
+|-------|---------|---------|------------|
+| Train | 60,000  | Yes     | 100        |
+| Test  | 10,000  | No      | 100        |
+
+No validation set is used. No custom splitting is performed.
+
+### Training Protocol
+
+Training consists of a **single pass** over the training set (1 epoch = 600 batches of 100 samples). A model checkpoint is saved after every batch, resulting in 600 checkpoints (`model_batch_0.pth` to `model_batch_599.pth`). Throughout the paper, *batch index* and *epoch* are used interchangeably to refer to these 600 training steps.
+
+The test set is used exclusively for evaluation — never for training or threshold selection.
+
+---
+
+## Model
+
+- **Architecture:** `MLP` — fully-connected feedforward network
+- **Layer sizes:** `[784, 500, 500, 500, 10]` (input → 3 hidden layers → output)
+- **Activation:** ReLU after each hidden layer; no activation on output layer
+- **Parameters:** 898,510
+- **Framework:** PyTorch
+- **Optimizer:** Adam (lr = 0.001)
+- **Loss function:** Cross-entropy
+- **Batch size:** 100
+
+### Symmetry & Compression Methods
+
+The `MLP` class extends a standard classifier with symmetry-based operations computed after training:
+
+| Method | Purpose |
+|--------|---------|
+| `fibration_coloring` | Groups nodes by forward (fibration) symmetry per layer |
+| `opfibration_coloring` | Groups nodes by backward (opfibration) symmetry per layer |
+| `covering_coloring` | Combines fibration + opfibration into a joint covering symmetry |
+| `collapse_version` | Builds a smaller MLP by merging nodes that share a color |
+| `ablation_version` | Builds a smaller MLP by randomly removing nodes (baseline) |
+| `pruning_version` | Builds a smaller MLP via structured L1-norm magnitude pruning (baseline) |
+
+### Limitations
+
+- Symmetry detection depends on clustering distance thresholds, which are set per layer — results may be sensitive to this choice.
+- `ablation_version` uses random node selection (`randperm`); results should be averaged over multiple runs.
+- Findings on MNIST/MLP may not generalize directly to convolutional or larger-scale architectures.
+
+---
+
+## Hardware & Environment
+
+### Hardware
+
+| Component | Specification |
+|-----------|--------------|
+| **CPU** | Intel Xeon W-2245 @ 3.90 GHz (8 cores / 16 threads, boost up to 4.7 GHz) |
+| **RAM** | 128 GB |
+| **GPU** | NVIDIA Quadro RTX 6000 (24 GB VRAM) |
+| **Storage** | NVMe SSD |
+
+### Operating System
+
+Ubuntu 20.04.6 LTS
+
+### Dependencies
+
+| Package | Version |
+|---------|---------|
+| **Python** | 3.8.10 |
+| **CUDA** (driver) | 11.4 |
+| **CUDA** (PyTorch) | 11.3 |
+| **PyTorch** | 1.12.1+cu113 |
+| **torchvision** | 0.13.1+cu113 |
+| **NumPy** | 1.23.3 |
+| **matplotlib** | 3.7.5 |
+| **pandas** | 2.0.2 |
+| **scikit-learn** | 1.2.2 |
+| **SciPy** | 1.10.1 |
+
+
+----------------------------------------
+
+# MLP Fibration Symmetry Analysis
+
 ## Initial Setup
 
 Define the correct paths in the various scripts for saving the dataset (`dataPATH`) and the results (`resultsPATH`):
@@ -244,5 +438,3 @@ To reproduce the results shown in the `plots/` directory, execute the following 
 - plt_during_training.py
 - plt_post_training.py
 - matching.py
-
-
