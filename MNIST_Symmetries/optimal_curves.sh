@@ -26,3 +26,9 @@ done
 python3 src/full_search.py -exp_name $exp_name\
 						-PATHtrain $PATHtrain\
 						-PATHres $PATHres
+
+# ===========================================================
+# Pareto Frontier
+
+python3 src/full_search_pareto.py -exp_name $exp_name\
+								   -PATHresults $PATHres

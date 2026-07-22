@@ -31,80 +31,143 @@ def one_to_one_cluster_similarity(labels_A, labels_B):
 
     Returns:
     - normalized_overlap: float, similarity score between 0 and 1
-    - matched_pairs: list of tuples (cluster_A_index, cluster_B_index)
     """
-    # Compute contingency matrix
     cont_matrix = contingency_matrix(labels_A, labels_B)
-
-    # Hungarian matching to maximize overlap
-    cost_matrix = -cont_matrix  # maximize overlap by minimizing negative overlap
+    cost_matrix = -cont_matrix
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
-
-    # Total overlap of matched pairs
     total_overlap = cont_matrix[row_ind, col_ind].sum()
-    normalized_overlap = total_overlap / len(labels_A)
+    return total_overlap / len(labels_A)
 
-    matched_pairs = list(zip(row_ind, col_ind))
 
-    return normalized_overlap
+def refinement_score(P1, P2):
+    total = 0
+    for label in np.unique(P1):
+        labels_P2 = P2[P1 == label]
+        if len(np.unique(labels_P2)) == 1:
+            total += 1
+    return total / len(np.unique(P1))
 
 # =============================================================
-# PARTITIONS
+# PARTITIONS - LAYER 1
 
 clusters = torch.load(results_folder + 'synchronization/clusters_batch_' + str(args.epoch) + '.pth')
-colors = torch.load(results_folder + 'coloring/fibration_batch_' + str(args.epoch) + '.pth')
-accuracy = torch.load(results_folder + 'collapse/post_training.pth')[:,5]
+class_clusters = [torch.load(results_folder + 'synchronization/clusters_class_' + str(cl) + '_batch_' + str(args.epoch) + '.pth') for cl in range(10)]
+mean_class_clusters = [torch.load(results_folder + 'synchronization/mean_clusters_class_' + str(cl) + '_batch_' + str(args.epoch) + '.pth') for cl in range(10)]
+colors = torch.load(results_folder + 'coloring/fibration_L1_batch_' + str(args.epoch) + '.pth')
+
+layer_key = 'L1'
 
 epsilons = clusters['eps']
 num_eps = len(epsilons)
-num_layers = sum(1 for k in clusters.keys() if k.startswith('L'))
+
+thresholds = colors[layer_key][:, 0]
+num_thrs = len(thresholds)
+
+clusters_l = clusters[layer_key]
+fibers_l = colors[layer_key][:, 1:].astype(int)
+hidden_size = clusters_l.shape[1]
+
+num_clusters = np.array([len(np.unique(row)) for row in clusters_l])
+num_colors = np.array([len(np.unique(row)) for row in fibers_l])
+
+# Mean class clusters for L1
+mtx_mean_clust = np.stack([mean_class_clusters[cl][layer_key][1, :] for cl in range(10)], axis=1)
+_, mean_clusters_l = np.unique(mtx_mean_clust, axis=0, return_inverse=True)
+
+# Class clusters vs epsilon for L1
+cls_clus_l = np.zeros((num_eps, hidden_size))
+for idx_eps in range(num_eps):
+    cls_cluster_eps = np.stack([class_clusters[cl][layer_key][idx_eps] for cl in range(10)], axis=1)
+    _, cls_clus_l[idx_eps, :] = np.unique(cls_cluster_eps, axis=0, return_inverse=True)
 
 # =============================================================
-# MATCHING - ALL LAYERS
+# SCORES
 
-for idx_layer in range(num_layers):
-	layer_key = f'L{idx_layer + 1}'
+matching_score_fib_rndclus = np.zeros((num_eps, num_thrs))
+ref_score_fib_in_cls_clus = np.zeros((num_eps, num_thrs))
+ref_score_fib_in_m_clus = np.zeros(num_thrs)
 
-	thresholds = colors[layer_key][:, 0]
-	num_thrs = len(thresholds)
+matching_score_cl_m_clus = np.zeros(num_eps)
+ref_score_rndclus_in_cl_clus = np.zeros(num_eps)
+ref_score_rndclus_in_m_clus = np.zeros(num_eps)
 
-	clusters_l = clusters[layer_key]
-	fibers_l = colors[layer_key][:, 1:]
-	num_clusters = np.array([len(np.unique(row)) for row in clusters_l])
-	num_colors = np.array([torch.unique(row).numel() for row in fibers_l])
+for idx_thr in range(num_thrs):
+    ff = fibers_l[idx_thr]
+    ref_score_fib_in_m_clus[idx_thr] = refinement_score(ff, mean_clusters_l)
+    for idx_eps in range(num_eps):
+        rc = clusters_l[idx_eps]
+        cc = cls_clus_l[idx_eps]
+        matching_score_fib_rndclus[idx_eps, idx_thr] = one_to_one_cluster_similarity(ff, rc)
+        ref_score_fib_in_cls_clus[idx_eps, idx_thr] = refinement_score(ff, cc)
 
-	matching_score = np.zeros((num_eps, num_thrs))
+for idx_eps in range(num_eps):
+    rc = clusters_l[idx_eps]
+    cc = cls_clus_l[idx_eps]
+    ref_score_rndclus_in_cl_clus[idx_eps] = refinement_score(rc, cc)
+    ref_score_rndclus_in_m_clus[idx_eps] = refinement_score(rc, mean_clusters_l)
+    matching_score_cl_m_clus[idx_eps] = one_to_one_cluster_similarity(cc, mean_clusters_l)
 
-	for idx_eps in range(num_eps):
-		for idx_thr in range(num_thrs):
-			cc = clusters_l[idx_eps]
-			ff = fibers_l[idx_thr]
-			matching_score[idx_eps, idx_thr] = one_to_one_cluster_similarity(cc, ff)
+idx_optimal_eps = np.argmax(matching_score_fib_rndclus, axis=0)
+optimal_eps = epsilons[idx_optimal_eps]
+optimal_num_clusters = num_clusters[idx_optimal_eps]
+optimal_match = np.max(matching_score_fib_rndclus, axis=0)
 
-	idx_optimal_thr = np.argmax(matching_score, axis=1)
-	optimal_colors = num_colors[idx_optimal_thr]
-	optimal_thr = thresholds[idx_optimal_thr]
-	optimal_match = np.max(matching_score, axis=1)
-	optimal_acc = accuracy[idx_optimal_thr]
+# =============================================================
+# Figure 1: optimal matching curves (x = threshold)
 
-	# Plot
-	fig, axs = plt.subplots(4, 1, figsize=(4, 20))
-	axs1b = axs[1].twinx()
+fig, axs = plt.subplots(3, 1, figsize=(4, 15))
+axs1b = axs[1].twinx()
 
-	for ax in axs:
-		ax.set_xlabel('Epsilon Synchr')
+for ax in axs:
+    ax.set_xlabel('Fibration Threshold')
 
-	axs[0].set_ylabel('Threshold Fibration')
-	axs[1].set_ylabel('Num Clusters', color='blue')
-	axs1b.set_ylabel('Num Fibers', color='red')
-	axs[2].set_ylabel('Matching')
-	axs[3].set_ylabel('Performance')
+axs[0].set_ylabel('Synchronization Epsilon')
+axs[1].set_ylabel('Num Sync Clusters', color='blue')
+axs1b.set_ylabel('Num Fibration Colors', color='red')
+axs[2].set_ylabel('Matching Score (Fibers vs Sync Clusters)')
 
-	axs[0].plot(epsilons, optimal_thr)
-	axs[1].plot(epsilons, num_clusters, color='blue')
-	axs1b.plot(epsilons, optimal_colors, color='red')
-	axs[2].plot(epsilons, optimal_match)
-	axs[3].plot(epsilons, optimal_acc)
+axs[0].plot(thresholds, optimal_eps)
+axs[1].plot(thresholds, optimal_num_clusters, color='blue')
+axs1b.plot(thresholds, num_colors, color='red')
+axs[2].plot(thresholds, optimal_match)
 
-	fig.savefig(results_folder + f'plots/matching_{layer_key}.svg', format='svg')
-	plt.close(fig)
+fig.savefig(results_folder + 'plots/matching_L1.svg', format='svg')
+plt.close(fig)
+
+# =============================================================
+# Figure 2: refinement and matching vs epsilon / threshold
+
+fig, axs = plt.subplots(2, 1, figsize=(4, 10))
+
+axs[0].plot(thresholds, ref_score_fib_in_m_clus)
+axs[0].set_xlabel('Fibration Threshold')
+axs[0].set_ylabel('Refinement: Fibers in Mean Class Clusters')
+
+axs[1].plot(epsilons, ref_score_rndclus_in_cl_clus, label='Sync Clusters < Class Clusters')
+axs[1].plot(epsilons, ref_score_rndclus_in_m_clus, label='Sync Clusters < Mean Class Clusters')
+axs[1].plot(epsilons, matching_score_cl_m_clus, label='Class Clusters = Mean Class Clusters')
+axs[1].set_xlabel('Synchronization Epsilon')
+axs[1].legend()
+
+fig.savefig(results_folder + 'plots/matching_refinement_p1_L1.svg', format='svg')
+plt.close(fig)
+
+# =============================================================
+# Figure 3: heatmaps (eps x thr)
+
+fig, axs = plt.subplots(2, 1, figsize=(8, 12))
+
+im0 = axs[0].pcolormesh(thresholds, epsilons, matching_score_fib_rndclus, cmap='viridis')
+im1 = axs[1].pcolormesh(thresholds, epsilons, ref_score_fib_in_cls_clus, cmap='viridis')
+
+fig.colorbar(im0, ax=axs[0])
+fig.colorbar(im1, ax=axs[1])
+
+axs[0].set_title('Matching: Fibers vs Sync Clusters')
+axs[1].set_title('Refinement: Fibers in Class Clusters')
+axs[0].set_ylabel('Synchronization Epsilon')
+axs[1].set_ylabel('Synchronization Epsilon')
+axs[1].set_xlabel('Fibration Threshold')
+
+fig.savefig(results_folder + 'plots/matching_refinement_p2_L1.svg', format='svg')
+plt.close(fig)

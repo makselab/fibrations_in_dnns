@@ -5,12 +5,14 @@ import argparse
 from scipy.interpolate import splprep, splev
 from scipy.spatial import ConvexHull
 
-PATH_DATA = '/home/osvaldo/Documents/CCNY/MNIST_Symmetries/train_dir/'
-PATH_RES  = '/home/osvaldo/Documents/CCNY/MNIST_Symmetries/results/'
-
 parser = argparse.ArgumentParser()
 parser.add_argument('-exp_name', type=str, required=True, help='Exp Name')
+parser.add_argument('-PATHresults', type=str, required=True, help='Results directory')
+parser.add_argument('-PATHtrain', type=str, required=True, help='Training directory')
 args = parser.parse_args()
+
+PATH_DATA = args.PATHtrain
+PATH_RES  = args.PATHresults
 
 acc = torch.load(PATH_DATA + args.exp_name + '/accuracy.pth')
 trainloss = torch.load(PATH_DATA + args.exp_name + '/loss_train.pth')

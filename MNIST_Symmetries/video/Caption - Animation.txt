@@ -1,0 +1,5 @@
+Formation of symmetries in a sample MLP training for MNIST.
+
+a) Accuracy of the network as a function of epochs along with the number of fibers/covers (this includes trivial and non-trivial fibers, so it represents the possible compression).
+b) Fibers indicated with the coloring of the nodes. White nodes are trivial single-node fibers. Connections are shown only for the strongest weights. Input units are not shown.
+c) Same of (b) for covers.

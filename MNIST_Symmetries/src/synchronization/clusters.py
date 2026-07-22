@@ -23,10 +23,11 @@ args = parser.parse_args()
 
 clustering_method = {'name': 'agg_clustering', 'cfg': {'linkage': 'complete'}}
 
+results_folder = args.PATHresults + args.exp_name + '/synchronization/'
+
 # =====================================================
 # Load activity (random inputs)
 
-results_folder = args.PATHresults + args.exp_name + '/synchronization/'
 activities = torch.load(results_folder + 'activity_random_input_batch_' + str(args.epoch) + '.pth')
 
 epsilons = torch.linspace(0, args.max_epsilon, args.num_distance_thr)
@@ -39,20 +40,25 @@ num_layers = len(activities)
 num_clusters_layers = torch.zeros(num_eps, num_layers)
 clusters_layers = {f'L{idx_layer+1}': np.zeros((num_eps, activities[idx_layer].shape[1])) for idx_layer in range(num_layers)}
 clusters_layers['eps'] = epsilons
+distance_matrices = {}
 
 for idx_layer, h in enumerate(activities):
+	layer_key = f'L{idx_layer+1}'
+
 	h_normalized = (h - h.mean(dim=0)) / h.std(dim=0)
 	h_normalized = h_normalized.cpu()
 	h_normalized = h_normalized / torch.norm(h_normalized, p=2, dim=0, keepdim=True)
 
 	distance_matrix = pairwise_distances(h_normalized.T, metric='euclidean')
+	distance_matrices[layer_key] = distance_matrix
 
 	for idx_eps, eps in enumerate(epsilons):
 		algorithm = make_algorithm(clustering_method['name'], clustering_method['cfg'], eps.item())
 		clusters = algorithm(distance_matrix)
 
 		num_clusters_layers[idx_eps, idx_layer] = len(np.unique(clusters))
-		clusters_layers[f'L{idx_layer+1}'][idx_eps, :] = clusters
+		clusters_layers[layer_key][idx_eps, :] = clusters
 
 torch.save(clusters_layers, results_folder + 'clusters_batch_' + str(args.epoch) + '.pth')
 torch.save(num_clusters_layers, results_folder + 'num_clusters_batch_' + str(args.epoch) + '.pth')
+torch.save(distance_matrices, results_folder + 'distance_matrices_batch_' + str(args.epoch) + '.pth')

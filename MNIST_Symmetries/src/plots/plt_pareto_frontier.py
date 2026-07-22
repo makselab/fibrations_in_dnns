@@ -6,9 +6,10 @@ from scipy.interpolate import interp1d
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-exp_name', type=str, required=True, help='Exp Name')
+parser.add_argument('-PATHresults', type=str, required=True, help='Results directory')
 args = parser.parse_args()
 
-PATH_RES = '/home/osvaldo/Documents/CCNY/MNIST_Symmetries/results/'
+PATH_RES = args.PATHresults
 filename =  PATH_RES + f'{args.exp_name}/pareto_frontier.csv'
 data = pd.read_csv(filename)
 

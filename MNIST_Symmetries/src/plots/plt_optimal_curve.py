@@ -5,9 +5,10 @@ import os
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-exp_name', type=str, required=True, help='Exp Name')
+parser.add_argument('-PATHresults', type=str, required=True, help='Results directory')
 args = parser.parse_args()
 
-PATH_RES = '/home/osvaldo/Documents/CCNY/MNIST_Symmetries/results/'
+PATH_RES = args.PATHresults
 datafolder = PATH_RES  + f'{args.exp_name}/optimal_curves/'
 fig, axs = plt.subplots(1,1,figsize=(7,7))
 axs.set_xlim([0,1.0])

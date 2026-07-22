@@ -1,1 +1,2 @@
-Link to Full_Grid_dL_vs_thr.csv (257 Mb): 
+Link to Full_Grid_dL_vs_thr.csv (257 Mb):
+https://zenodo.org/records/21499971/files/Full_Grid_dL_vs_thr.csv
