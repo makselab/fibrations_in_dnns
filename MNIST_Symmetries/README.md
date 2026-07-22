@@ -275,3 +275,8 @@ To reproduce the results shown in the `plots/` directory, execute the following 
 ----------------
 
 train_dir (OMV5TB)
+
+instruccion para correr.
+expected output
+how to run the software en data
+

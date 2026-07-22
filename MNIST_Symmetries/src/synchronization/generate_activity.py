@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-exp_name', type=str, required=True, help='Exp Name')
 parser.add_argument('-PATHtrain', type=str, required=True, help='Training directory')
 parser.add_argument('-PATHresults', type=str, required=True, help='Results directory')
-parser.add_argument('-PATHdata', type=str, required=True, help='Dataset directory')
+parser.add_argument('-PATHdata', type=str, default=True, help='Dataset directory')
 parser.add_argument('-epoch', type=int, required=True, help='Epoch')
 parser.add_argument('-num_random_inputs', type=int, default=200, help='Number of random input samples')
 

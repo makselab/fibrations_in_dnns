@@ -1,11 +1,22 @@
+import argparse
+
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics.cluster import contingency_matrix
 from scipy.optimize import linear_sum_assignment
-import matplotlib.pyplot as plt
 
-PATH = '/media/osvaldo/OMV5TB/MNIST_Symmetries/'
+# =====================================================
+# Load args, paths.
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-exp_name', type=str, required=True, help='Exp Name')
+parser.add_argument('-PATHresults', type=str, required=True, help='Results directory')
+parser.add_argument('-epoch', type=int, required=True, help='Epoch')
+
+args = parser.parse_args()
+
+results_folder = args.PATHresults + args.exp_name + '/'
 
 # =============================================================
 
@@ -40,59 +51,60 @@ def one_to_one_cluster_similarity(labels_A, labels_B):
 # =============================================================
 # PARTITIONS
 
-clusters = torch.load(PATH + 'clustering/clusters_batch_599.pth')
-colors = torch.load(PATH + 'coloring/fibration_batch_599.pth')
-accuracy = torch.load(PATH + 'collapse/post_training.pth')[:,5]
+clusters = torch.load(results_folder + 'synchronization/clusters_batch_' + str(args.epoch) + '.pth')
+colors = torch.load(results_folder + 'coloring/fibration_batch_' + str(args.epoch) + '.pth')
+accuracy = torch.load(results_folder + 'collapse/post_training.pth')[:,5]
 
 epsilons = clusters['eps']
-thresholds = colors['L1'][:,0]
 num_eps = len(epsilons)
-num_thrs = len(thresholds)
+num_layers = sum(1 for k in clusters.keys() if k.startswith('L'))
 
-matching_score = np.zeros((num_eps, num_thrs))
 # =============================================================
+# MATCHING - ALL LAYERS
 
-# MATCHING IN LAYER 1.
+for idx_layer in range(num_layers):
+	layer_key = f'L{idx_layer + 1}'
 
-clusters_l1 = clusters['L1']
-fibers_l1 = colors['L1'][:,1:]
-num_clusters = np.array([len(np.unique(row)) for row in clusters_l1])
-num_colors = np.array([torch.unique(row).numel() for row in fibers_l1])
+	thresholds = colors[layer_key][:, 0]
+	num_thrs = len(thresholds)
 
-for idx_eps in range(num_eps):
-	for idx_thr in range(num_thrs):
+	clusters_l = clusters[layer_key]
+	fibers_l = colors[layer_key][:, 1:]
+	num_clusters = np.array([len(np.unique(row)) for row in clusters_l])
+	num_colors = np.array([torch.unique(row).numel() for row in fibers_l])
 
-		cc = clusters_l1[idx_eps]
-		ff = fibers_l1[idx_thr]
-		score = one_to_one_cluster_similarity(cc, ff)
-		matching_score[idx_eps, idx_thr] = score
+	matching_score = np.zeros((num_eps, num_thrs))
 
+	for idx_eps in range(num_eps):
+		for idx_thr in range(num_thrs):
+			cc = clusters_l[idx_eps]
+			ff = fibers_l[idx_thr]
+			matching_score[idx_eps, idx_thr] = one_to_one_cluster_similarity(cc, ff)
 
-idx_optimal_thr = np.argmax(matching_score, axis=1)
-optimal_colors = num_colors[idx_optimal_thr]
-optimal_thr = thresholds[idx_optimal_thr]
-optimal_match = np.max(matching_score, axis=1)
-optimal_acc = accuracy[idx_optimal_thr]
+	idx_optimal_thr = np.argmax(matching_score, axis=1)
+	optimal_colors = num_colors[idx_optimal_thr]
+	optimal_thr = thresholds[idx_optimal_thr]
+	optimal_match = np.max(matching_score, axis=1)
+	optimal_acc = accuracy[idx_optimal_thr]
 
-# Plot
-fig, axs = plt.subplots(4,1, figsize =(4,20))
-axs1b = axs[1].twinx()
+	# Plot
+	fig, axs = plt.subplots(4, 1, figsize=(4, 20))
+	axs1b = axs[1].twinx()
 
-axs[0].set_xlabel('Epsilon Synchr')
-axs[1].set_xlabel('Epsilon Synchr')
-axs[2].set_xlabel('Epsilon Synchr')
-axs[3].set_xlabel('Epsilon Synchr')
+	for ax in axs:
+		ax.set_xlabel('Epsilon Synchr')
 
-axs[0].set_ylabel('Threshold Fibration')
-axs[1].set_ylabel('Num Clusters', color = 'blue')
-axs1b.set_ylabel('Num Fibers', color = 'red')
-axs[2].set_ylabel('Matching')
-axs[3].set_ylabel('Performance')
+	axs[0].set_ylabel('Threshold Fibration')
+	axs[1].set_ylabel('Num Clusters', color='blue')
+	axs1b.set_ylabel('Num Fibers', color='red')
+	axs[2].set_ylabel('Matching')
+	axs[3].set_ylabel('Performance')
 
-axs[0].plot(epsilons, optimal_thr)
-axs[1].plot(epsilons, num_clusters,color='blue')
-axs1b.plot(epsilons, optimal_colors, color='red')
-axs[2].plot(epsilons, optimal_match)
-axs[3].plot(epsilons, optimal_acc)
+	axs[0].plot(epsilons, optimal_thr)
+	axs[1].plot(epsilons, num_clusters, color='blue')
+	axs1b.plot(epsilons, optimal_colors, color='red')
+	axs[2].plot(epsilons, optimal_match)
+	axs[3].plot(epsilons, optimal_acc)
 
-fig.savefig(PATH + 'plots/matching.svg', format='svg')
+	fig.savefig(results_folder + f'plots/matching_{layer_key}.svg', format='svg')
+	plt.close(fig)
