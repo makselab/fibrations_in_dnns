@@ -3,8 +3,10 @@
 # ===========================================================
 # Initial Configuration - Parameters
 PATHtrain='./train_dir/'
+PATHdata='./'
 PATHres='./results/'
 exp_name='exp_'$1
+epoch_idx=599
 
 # ===========================================================
 # Optimal Search for each opfiber coloring.
@@ -32,3 +34,12 @@ python3 src/full_search.py -exp_name $exp_name\
 
 python3 src/full_search_pareto.py -exp_name $exp_name\
 								   -PATHresults $PATHres
+
+# ===========================================================
+# Evaluation Pareto Frontier
+
+python3 src/evaluation_pareto_frontier.py -exp_name $exp_name\
+										   -PATHtrain $PATHtrain\
+										   -PATHresults $PATHres\
+										   -PATHdata $PATHdata\
+										   -epoch $epoch_idx

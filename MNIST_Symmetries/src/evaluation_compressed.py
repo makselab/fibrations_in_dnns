@@ -123,7 +123,7 @@ for row in dataframe.itertuples():
 	net_pruned.eval()
 	correct = 0
 	total = 0
-	loss_final += loss.item()
+	loss_final = 0
 
 	for images,labels in test_gen:
 	    images = images.view(-1,784).to(dev)
