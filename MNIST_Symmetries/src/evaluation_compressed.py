@@ -138,6 +138,56 @@ for row in dataframe.itertuples():
 	acc_pruned = (100*correct)/(total+1)
 	loss_pruned = loss_final/len(test_gen)
 
+	# Evaluation PFP ------------------------------------------
+	name_pfp = args.exp_name + '_epoch_' + str(args.epoch) + '_pfp_thrs' + f'_{fib_thrs}_{opfib_thrs}'
+	pfp_folder = args.PATHtrain + name_pfp + '/checkpoints/'
+	net_pfp = torch.load(pfp_folder + 'model_batch_0.pth')
+	net_pfp.to(dev)
+
+	net_pfp.eval()
+	correct = 0
+	total = 0
+	loss_final = 0
+
+	for images,labels in test_gen:
+	    images = images.view(-1,784).to(dev)
+	    labels = labels.to(dev)
+
+	    out_1, out_2 = net_pfp(images)
+	    _, predicted = torch.max(out_2,1)
+	    loss = loss_function(out_2, labels)
+	    correct += (predicted == labels).sum()
+	    total += labels.size(0)
+	    loss_final += loss.item()
+
+	acc_pfp = (100*correct)/(total+1)
+	loss_pfp = loss_final/len(test_gen)
+
+	# Evaluation EigenDamage ------------------------------------------
+	name_ed = args.exp_name + '_epoch_' + str(args.epoch) + '_ed_thrs' + f'_{fib_thrs}_{opfib_thrs}'
+	ed_folder = args.PATHtrain + name_ed + '/checkpoints/'
+	net_ed = torch.load(ed_folder + 'model_batch_0.pth')
+	net_ed.to(dev)
+
+	net_ed.eval()
+	correct = 0
+	total = 0
+	loss_final = 0
+
+	for images,labels in test_gen:
+	    images = images.view(-1,784).to(dev)
+	    labels = labels.to(dev)
+
+	    out_1, out_2 = net_ed(images)
+	    _, predicted = torch.max(out_2,1)
+	    loss = loss_function(out_2, labels)
+	    correct += (predicted == labels).sum()
+	    total += labels.size(0)
+	    loss_final += loss.item()
+
+	acc_ed = (100*correct)/(total+1)
+	loss_ed = loss_final/len(test_gen)
+
 	# Saving -----------------------------------------------
 
 	row_partial = {}
@@ -145,16 +195,20 @@ for row in dataframe.itertuples():
 		row_partial.update(diccionario)
 
 	row = {
-	'thr_fib_0': row.thr_fib_0, 
-	'thr_fib_1': row.thr_fib_1, 
+	'thr_fib_0': row.thr_fib_0,
+	'thr_fib_1': row.thr_fib_1,
 	'thr_fib_2': row.thr_fib_2,
-	'thr_opfib_0': row.thr_opf, 
-	'thr_opfib_1': row.thr_opf, 
+	'thr_opfib_0': row.thr_opf,
+	'thr_opfib_1': row.thr_opf,
 	'thr_opfib_2': row.thr_opf,
 	'acc_coll': acc_coll.item(),
 	'acc_pruned': acc_pruned.item(),
+	'acc_pfp': acc_pfp.item(),
+	'acc_ed': acc_ed.item(),
 	'loss_coll': loss_coll,
-	'loss_pruned': loss_pruned
+	'loss_pruned': loss_pruned,
+	'loss_pfp': loss_pfp,
+	'loss_ed': loss_ed,
 	}
 
 	row.update(row_partial)

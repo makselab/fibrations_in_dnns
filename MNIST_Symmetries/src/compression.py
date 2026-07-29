@@ -9,6 +9,9 @@ from itertools import product
 
 import torch
 from torchvision.datasets import MNIST
+from torch.utils.data import DataLoader
+from torchvision.transforms import ToTensor
+from torch.nn import CrossEntropyLoss
 import torch.nn.utils.prune as prune
 from model import MLP
 
@@ -21,6 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-exp_name', type=str, required=True, help='Exp Name')
 parser.add_argument('-PATHtrain', type=str, required=True, help='Training directory')
 parser.add_argument('-PATHresults', type=str, required=True, help='Results directory')
+parser.add_argument('-PATHdata', type=str, required=True, help='Dataset directory')
 parser.add_argument('-epoch', type=int, required=True, help='Epoch')
 
 args = parser.parse_args()
@@ -35,6 +39,19 @@ num_params = sum(p.numel() for p in net.parameters())
 num_nodes = sum(net.dims[1:-1]) 
 print('Num Params:', num_params)
 print('Num Nodes:', num_nodes)
+
+# =====================================================
+# DATASET (test set for PFP and EigenDamage)
+
+test_data = MNIST(root=args.PATHdata, train=False, transform=ToTensor())
+test_gen  = DataLoader(dataset=test_data, batch_size=100, shuffle=False)
+x_test, y_test = next(iter(test_gen))
+x_test = x_test.view(-1, 784).to(dev)
+y_test = y_test.to(dev)
+
+criterion = CrossEntropyLoss()
+
+# =====================================================
 
 dataframe = []
 
@@ -98,6 +115,24 @@ for row in dataframe.itertuples():
 	if not os.path.exists(pruned_folder): os.makedirs(pruned_folder)
 	torch.save(net_pruned, pruned_folder + 'model_batch_0.pth')
 
+	# PFP -------------------------------------------------
+	net_pfp = net.pfp_version(x_test, amount)
+	num_params_pfp = sum(p.numel() for p in net_pfp.parameters())
+
+	name_pfp = args.exp_name + '_epoch_' + str(args.epoch) + '_pfp_thrs' + f'_{fib_thrs}_{opfib_thrs}'
+	pfp_folder = args.PATHtrain + name_pfp + '/checkpoints/'
+	if not os.path.exists(pfp_folder): os.makedirs(pfp_folder)
+	torch.save(net_pfp, pfp_folder + 'model_batch_0.pth')
+
+	# EigenDamage -----------------------------------------
+	net_ed = net.eigendamage_version(x_test, y_test, amount, criterion)
+	num_params_ed = sum(p.numel() for p in net_ed.parameters()) + sum(b.numel() for b in net_ed.buffers())
+
+	name_ed = args.exp_name + '_epoch_' + str(args.epoch) + '_ed_thrs' + f'_{fib_thrs}_{opfib_thrs}'
+	ed_folder = args.PATHtrain + name_ed + '/checkpoints/'
+	if not os.path.exists(ed_folder): os.makedirs(ed_folder)
+	torch.save(net_ed, ed_folder + 'model_batch_0.pth')
+
 	# Saving -----------------------------------------------
 	row_partial = {}
 	for diccionario in abl_results:
@@ -122,6 +157,13 @@ for row in dataframe.itertuples():
 	'num_L3_pruned': net_pruned.dims[3],
 	'num_params_pruned': num_params_pruned,
 	'reduction_pars_pruned': num_params_pruned/num_params,
+	'num_L1_pfp': net_pfp.dims[1],
+	'num_L2_pfp': net_pfp.dims[2],
+	'num_L3_pfp': net_pfp.dims[3],
+	'num_params_pfp': num_params_pfp,
+	'reduction_pars_pfp': num_params_pfp/num_params,
+	'num_params_ed': num_params_ed,
+	'reduction_pars_ed': num_params_ed/num_params,
 	}
 
 	row.update(row_partial)

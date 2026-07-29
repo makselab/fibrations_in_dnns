@@ -92,11 +92,20 @@ for name, gp in data.groupby("thr_opfib_0"):
 	axs[1][1].plot(gp['reduction_nodes'],gp['loss_coll'])
 
 data.sort_values("reduction_pars_pruned", inplace=True)
-axs[0][0].plot(data['reduction_pars_pruned'],data['acc_pruned'], color='pink', label = 'Random Pruning')
-axs[0][0].plot(reductions_params_common, acc_abl_params_mean, color='blue', label = 'L2 Pruning')
-axs[0][0].legend()
+axs[0][0].plot(data['reduction_pars_pruned'],data['acc_pruned'], color='pink', label='Random Pruning')
+axs[0][0].plot(reductions_params_common, acc_abl_params_mean, color='blue', label='L2 Pruning')
 axs[1][0].plot(data['reduction_pars_pruned'],data['loss_pruned'], color='pink')
 axs[1][0].plot(reductions_params_common, loss_abl_params_mean, color='blue')
+
+data.sort_values("reduction_pars_pfp", inplace=True)
+axs[0][0].plot(data['reduction_pars_pfp'], data['acc_pfp'], color='black', label='PFP')
+axs[1][0].plot(data['reduction_pars_pfp'], data['loss_pfp'], color='black')
+
+data.sort_values("reduction_pars_ed", inplace=True)
+axs[0][0].plot(data['reduction_pars_ed'], data['acc_ed'], color='purple', label='EigenDamage')
+axs[1][0].plot(data['reduction_pars_ed'], data['loss_ed'], color='purple')
+
+axs[0][0].legend()
 
 
 fig.savefig(PATH_RES + args.exp_name + '/Optimal_Metrics_curve.svg',format='svg')

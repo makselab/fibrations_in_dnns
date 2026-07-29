@@ -1,11 +1,13 @@
-from torch import stack, unique, arange, randperm, norm, where
+from torch import stack, unique, arange, randperm, norm, where, multinomial, no_grad, cat, quantile
 from torch.nn import Module, Linear, ReLU, ModuleList
 from symmetries.coloring import fibration_linear, opfibration_linear, covering
 from symmetries.collapse import collapse_linear
 from numpy import cumsum
-from compression_methods import ablation_linear
+from compression_methods import ablation_linear, KFEBottleneck
 import copy
 import torch.nn.utils.prune as prune
+from torch.linalg import eigh
+
 
 class MLP(Module):
   def __init__(self, input_size, hidden_sizes=[500,500,500], num_classes=10):
@@ -159,7 +161,7 @@ class MLP(Module):
         layer_pruned[layer_idx] = where(fc_norms > 1e-7)[0]
         num_nodes_pruned[layer_idx] = len(layer_pruned[layer_idx])
 
-      mlp_pruned = MLP(784, num_nodes_pruned, 10)
+      mlp_pruned = MLP(input_size=self.dims[0], hidden_sizes=num_nodes_pruned, num_classes=self.dims[-1])
 
       auxs = [None]+ layer_pruned + [None]
 
@@ -172,3 +174,121 @@ class MLP(Module):
         mlp_pruned.layers[i].bias.data = abl_layer.bias.data
 
       return mlp_pruned
+
+  def pfp_version(self, x, amount):
+      # Provable Filter Pruning (Liebenwein et al., ICLR 2020)
+      # X: batch of input points used to estimate sensitivities (the paper's S)
+      # amount: fraction of filters to prune per layer (same convention as
+      #         pruning_version's `amount`)
+ 
+      with no_grad():
+        activations, _ = self.forward(x)
+ 
+      layer_pfp = [None for layer_idx in range(self.num_layers)]
+      reweight_factors = [None for layer_idx in range(self.num_layers)]
+ 
+      for layer_idx in range(self.num_layers):
+        a      = self.activation(activations[layer_idx])          # a^l(x), (N, eta_l)
+        W_next = self.layers[layer_idx + 1].weight.data            # (eta_{l+1}, eta_l)
+ 
+        numerator   = W_next.unsqueeze(0) * a.unsqueeze(1)         # w_ij a_j(x), (N, eta_{l+1}, eta_l)
+        denominator = a @ W_next.t()                               # sum_k w_ik a_k(x), (N, eta_{l+1})
+        sensitivities_per_x = numerator / denominator.unsqueeze(-1).clamp_min(1e-12)
+ 
+        s = sensitivities_per_x.abs().amax(dim=(0, 1))              # s_j^l, (eta_l,)
+        p = s / s.sum()
+ 
+        num_nodes = a.shape[1]
+        m = max(1, round((1 - amount) * num_nodes))
+ 
+        samples = multinomial(p, m, replacement=True)
+        kept_nodes, counts = unique(samples, return_counts=True)
+ 
+        layer_pfp[layer_idx]        = kept_nodes
+        reweight_factors[layer_idx] = counts.float() / (m * p[kept_nodes])
+ 
+      num_nodes_pfp = [len(nodes) for nodes in layer_pfp]
+      mlp_pfp = MLP(input_size=self.dims[0], hidden_sizes=num_nodes_pfp, num_classes=self.dims[-1])
+ 
+      auxs = [None] + layer_pfp + [None]
+ 
+      for i, layer in enumerate(self.layers):
+        working_layer = copy.deepcopy(layer)
+ 
+        if i > 0:
+          # reweight incoming columns for the filters sampled in layer i-1
+          working_layer.weight.data[:, layer_pfp[i - 1]] *= reweight_factors[i - 1]
+ 
+        abl_layer = ablation_linear(working_layer,
+                                    nodes_ablation_in=auxs[i],
+                                    nodes_ablation_out=auxs[i + 1])
+ 
+        mlp_pfp.layers[i].weight.data = abl_layer.weight.data
+        mlp_pfp.layers[i].bias.data = abl_layer.bias.data
+ 
+      return mlp_pfp
+
+  def eigendamage_version(self, x, y, amount, criterion):
+      # EigenDamage (Wang et al., ICML 2019).
+ 
+      net_ed = copy.deepcopy(self)
+
+      # ---------------------------------------------------------------
+ 
+      # manual forward pass (self.forward detaches activations, which would
+      # block the backward pass needed to get grad_s below)
+      self.zero_grad()
+      activations = []
+      preacts     = []
+      N = x.shape[0]
+
+      for layer_idx in range(self.num_layers):
+        activations.append(x)
+        z = self.layers[layer_idx](x)
+        z.retain_grad()
+        preacts.append(z)
+        x = self.activation(z)
+ 
+      out  = self.layers[self.num_layers](x)
+      loss = criterion(out, y)
+      loss.backward()
+
+      # --------------------------------------------------------------- 
+ 
+      for layer_idx in range(self.num_layers):
+        a  = activations[layer_idx].detach()          # (N, n_in)
+        gs = preacts[layer_idx].grad.detach()          # (N, n_out)
+ 
+        A = (a.t() @ a) / N                            # eq. (2): E[a a^T]
+        S = (gs.t() @ gs) / N                          # eq. (2): E[grad_s grad_s^T]
+ 
+        Lambda_A, Q_A = eigh(A)
+        Lambda_S, Q_S = eigh(S)
+ 
+        W  = self.layers[layer_idx].weight.data.t()    # (n_in, n_out), paper convention
+        Wp = Q_A.t() @ W @ Q_S                          # rotated weight, eq. (15)
+ 
+        Theta = (Wp ** 2) * Lambda_A.unsqueeze(1) * Lambda_S.unsqueeze(0)  # Alg. 2, line 4
+ 
+        row_importance = Theta.sum(dim=1)              # eigen-channels of Q_A (input side)
+        col_importance = Theta.sum(dim=0)              # eigen-channels of Q_S (output side)
+        tau = quantile(cat([row_importance, col_importance]), amount)
+ 
+        kept_in  = where(row_importance > tau)[0]
+        kept_out = where(col_importance > tau)[0]
+ 
+        if len(kept_in) == 0:
+          kept_in = row_importance.argsort(descending=True)[:1]
+        if len(kept_out) == 0:
+          kept_out = col_importance.argsort(descending=True)[:1]
+ 
+        Q_in    = Q_A[:, kept_in].contiguous()          # (n_in, r_in)
+        Q_out   = Q_S[:, kept_out].contiguous()         # (n_out, r_out)
+        Wp_kept = Wp[kept_in][:, kept_out].contiguous() # (r_in, r_out)
+        bias    = self.layers[layer_idx].bias.data.clone()
+ 
+        net_ed.layers[layer_idx] = KFEBottleneck(Q_in, Wp_kept, Q_out, bias)
+ 
+      return net_ed
+
+

@@ -34,3 +34,17 @@ def ablation_linear(module, nodes_ablation_in=None, nodes_ablation_out=None):
         module_ablation.bias = None
 
     return module_ablation
+
+
+class KFEBottleneck(nn.Module):
+  def __init__(self, Q_in, W_prime, Q_out, bias):
+    super(KFEBottleneck, self).__init__()
+    self.register_buffer('Q_in', Q_in)
+    self.register_buffer('Q_out', Q_out)
+    self.W_prime = nn.Parameter(W_prime)
+    self.bias    = nn.Parameter(bias)
+ 
+  def forward(self, x):
+    h = x @ self.Q_in
+    h = h @ self.W_prime
+    return h @ self.Q_out.t() + self.bias
