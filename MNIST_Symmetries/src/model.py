@@ -1,9 +1,13 @@
+import torch
+import numpy as np
+import scipy.sparse as sp
 from torch import stack, unique, arange, randperm, norm, where, multinomial, no_grad, cat, quantile
 from torch.nn import Module, Linear, ReLU, ModuleList
 from symmetries.coloring import fibration_linear, opfibration_linear, covering
 from symmetries.collapse import collapse_linear
 from numpy import cumsum
 from compression_methods import ablation_linear, KFEBottleneck
+from symmetries.loss_coloring import cluster_multilayer_shared_budget
 import copy
 import torch.nn.utils.prune as prune
 from torch.linalg import eigh
@@ -18,9 +22,11 @@ class MLP(Module):
     self.activation = ReLU()
     self.layers = ModuleList([Linear(self.dims[i],self.dims[i+1]) for i in range(self.num_layers + 1)])
 
-    self.symmetries = {'fibration': None,
-                    'opfibration':None,
-                    'covering': None}
+    self.symmetries  = {'fibration': None,
+                     'opfibration':None,
+                     'covering': None,
+                     'loss': None}
+    self._loss_S     = None
 
   def forward(self,x):
     activations = []
@@ -82,6 +88,118 @@ class MLP(Module):
 
       self.symmetries['covering'] = colors
 
+
+  def loss_coloring(self, x, y, criterion, F_max):
+
+      # Manual forward pass to retain gradients on pre-activations
+      self.zero_grad()
+      activations = []
+      preacts     = []
+      N = x.shape[0]
+
+      for layer_idx in range(self.num_layers):
+          activations.append(x)
+          z = self.layers[layer_idx](x)
+          z.retain_grad()
+          preacts.append(z)
+          x = self.activation(z)
+
+      out  = self.layers[self.num_layers](x)
+      loss = criterion(out, y)
+      loss.backward()
+
+      layers_data = []
+      S_matrices  = []
+      for layer_idx in range(self.num_layers):
+          a  = activations[layer_idx].detach()                   # (N, n_in)
+          gs = preacts[layer_idx].grad.detach()                  # (N, n_out)
+
+          ones  = torch.ones(N, 1, device=a.device)
+          a_aug = torch.cat([a, ones], dim=1)                    # (N, n_in+1)
+          A = ((a_aug.t() @ a_aug) / N).cpu().numpy()           # (n_in+1, n_in+1)
+          S = ((gs.t()  @ gs)  / N).cpu().numpy()               # (n_out, n_out)
+
+          W = self.layers[layer_idx].weight.data.cpu().numpy()   # (n_out, n_in)
+          b = self.layers[layer_idx].bias.data.cpu().numpy()[:, None]
+          w = np.hstack([W, b])                                  # (n_out, n_in+1)
+
+          layers_data.append({"w": w, "S": S, "A": A})
+          S_matrices.append(S)
+
+      results, _ = cluster_multilayer_shared_budget(layers_data, F_max, verbose=False)
+
+      colors = []
+      for layer_idx, (clusters, _) in enumerate(results):
+          n_out = self.dims[layer_idx + 1]
+          color_tensor = torch.zeros(n_out, dtype=torch.long)
+          for color_idx, cluster_set in enumerate(clusters):
+              for node_idx in cluster_set:
+                  color_tensor[node_idx] = color_idx
+          colors.append(color_tensor)
+
+      self.symmetries['loss'] = colors
+      self._loss_S            = S_matrices
+
+  def collapse_loss_version(self):
+      collapsed_sizes = [unique(c).shape[0] for c in self.symmetries['loss']]
+      mlp = MLP(input_size=self.dims[0], hidden_sizes=collapsed_sizes, num_classes=self.dims[-1])
+
+      def row_weights(S, c_idx):
+          """r_j = sum_{l in c} S[j,l] for each j in c. Fallback: uniform if all zeros."""
+          r = S[np.ix_(c_idx, c_idx)].sum(axis=1)
+          M = r.sum()
+          if M < 1e-15:
+              r = np.ones(len(c_idx))
+              M = float(len(c_idx))
+          return r, M
+
+      # Hidden layers
+      for l in range(self.num_layers):
+          S_l          = self._loss_S[l]
+          W_l          = self.layers[l].weight.data.cpu().numpy()   # (n_out, n_in)
+          b_l          = self.layers[l].bias.data.cpu().numpy()     # (n_out,)
+          curr_colors  = self.symmetries['loss'][l].numpy()
+          prev_colors  = self.symmetries['loss'][l - 1].numpy() if l > 0 else None
+
+          K_l   = collapsed_sizes[l]
+          K_prev = mlp.dims[l]
+          W_new = np.zeros((K_l, K_prev))
+          b_new = np.zeros(K_l)
+
+          for c in range(K_l):
+              c_idx    = np.where(curr_colors == c)[0]
+              r, M_c   = row_weights(S_l, c_idx)
+
+              # Weighted average of weight rows in original input space
+              w_avg = (r @ W_l[c_idx, :]) / M_c   # (dims[l],)
+              b_new[c] = (r @ b_l[c_idx]) / M_c
+
+              if l == 0:
+                  W_new[c] = w_avg
+              else:
+                  # Project w_avg (dims[l]) → K_{l-1}: sum components per previous cluster
+                  for i, val in enumerate(w_avg):
+                      W_new[c, prev_colors[i]] += val
+
+          mlp.layers[l].weight.data = torch.tensor(W_new, dtype=torch.float32)
+          mlp.layers[l].bias.data   = torch.tensor(b_new, dtype=torch.float32)
+
+      # Output layer: collapse columns with the same weighted average
+      S_last      = self._loss_S[-1]
+      W_out       = self.layers[self.num_layers].weight.data.cpu().numpy()  # (dims[-1], n_last)
+      last_colors = self.symmetries['loss'][-1].numpy()
+      K_last      = collapsed_sizes[-1]
+      W_out_new   = np.zeros((self.dims[-1], K_last))
+
+      for c in range(K_last):
+          c_idx  = np.where(last_colors == c)[0]
+          r, M_c = row_weights(S_last, c_idx)
+          W_out_new[:, c] = (W_out[:, c_idx] @ r) / M_c
+
+      mlp.layers[self.num_layers].weight.data = torch.tensor(W_out_new, dtype=torch.float32)
+      mlp.layers[self.num_layers].bias.data   = self.layers[self.num_layers].bias.data.cpu().clone()
+
+      return mlp
 
   def num_colors(self, symmetry='covering'):
       return [unique(colors_layer).shape[0] for colors_layer in self.symmetries[symmetry]]
