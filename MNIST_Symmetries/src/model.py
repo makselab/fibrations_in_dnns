@@ -1,7 +1,6 @@
 import torch
 import numpy as np
-import scipy.sparse as sp
-from torch import stack, unique, arange, randperm, norm, where, multinomial, no_grad, cat, quantile
+from torch import unique, arange, randperm, norm, where, multinomial, no_grad, cat, quantile
 from torch.nn import Module, Linear, ReLU, ModuleList
 from symmetries.coloring import fibration_linear, opfibration_linear, covering
 from symmetries.collapse import collapse_linear
