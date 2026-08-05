@@ -10,8 +10,8 @@ epoch_idx=599
 
 export PYTHONPATH=src
 
-# F_max budget values to sweep
-F_max_values="0.1 0.5 1.0 2.0 5.0"
+# Distance threshold values to sweep (20 points in (0, 0.05])
+distance_threshold_values=$(python3 -c "import numpy as np; print(' '.join(f'{x:.4f}' for x in np.linspace(0, 0.02, 101)[1:]))")
 
 # ===========================================================
 # Loss Coloring & Collapse
@@ -22,7 +22,7 @@ python3 src/compression_loss.py -exp_name $exp_name\
                                 -PATHresults $PATHresults\
                                 -PATHdata $PATHdata\
                                 -epoch $epoch_idx\
-                                -F_max $F_max_values
+                                -distance_threshold $distance_threshold_values
 
 # ===========================================================
 # Evaluation Loss Models
@@ -33,4 +33,4 @@ python3 src/evaluation_loss.py -exp_name $exp_name\
                                -PATHresults $PATHresults\
                                -PATHdata $PATHdata\
                                -epoch $epoch_idx\
-                               -F_max $F_max_values
+                               -distance_threshold $distance_threshold_values

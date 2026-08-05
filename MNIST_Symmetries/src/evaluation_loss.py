@@ -15,12 +15,12 @@ import pandas as pd
 # Load args, paths, device.
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-exp_name',    type=str,   required=True,            help='Exp Name')
-parser.add_argument('-PATHtrain',   type=str,   required=True,            help='Training directory')
-parser.add_argument('-PATHresults', type=str,   required=True,            help='Results directory')
-parser.add_argument('-PATHdata',    type=str,   required=True,            help='Dataset directory')
-parser.add_argument('-epoch',       type=int,   required=True,            help='Epoch')
-parser.add_argument('-F_max',       type=float, required=True, nargs='+', help='List of F_max budget values')
+parser.add_argument('-exp_name',           type=str,   required=True,            help='Exp Name')
+parser.add_argument('-PATHtrain',          type=str,   required=True,            help='Training directory')
+parser.add_argument('-PATHresults',        type=str,   required=True,            help='Results directory')
+parser.add_argument('-PATHdata',           type=str,   required=True,            help='Dataset directory')
+parser.add_argument('-epoch',              type=int,   required=True,            help='Epoch')
+parser.add_argument('-distance_threshold', type=float, required=True, nargs='+', help='List of distance thresholds')
 
 args = parser.parse_args()
 
@@ -57,10 +57,10 @@ def evaluate(net):
 
 data = []
 
-for F_max in args.F_max:
-    print(f'F_max: {F_max}')
+for thr in args.distance_threshold:
+    print(f'distance_threshold: {thr}')
 
-    name_loss   = args.exp_name + '_epoch_' + str(args.epoch) + f'_loss_Fmax_{F_max}'
+    name_loss   = args.exp_name + '_epoch_' + str(args.epoch) + f'_loss_thr_{thr}'
     loss_folder = args.PATHtrain + name_loss + '/checkpoints/'
     net_loss    = torch.load(loss_folder + 'model_batch_0.pth')
     net_loss.to(dev)
@@ -68,9 +68,9 @@ for F_max in args.F_max:
     acc_loss, loss_loss = evaluate(net_loss)
 
     data.append({
-        'F_max':     F_max,
-        'acc_loss':  acc_loss,
-        'loss_loss': loss_loss,
+        'distance_threshold': thr,
+        'acc_loss':           acc_loss,
+        'loss_loss':          loss_loss,
     })
 
 df = pd.DataFrame(data)

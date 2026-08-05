@@ -17,12 +17,12 @@ import pandas as pd
 # Load args, paths, device.
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-exp_name',   type=str,   required=True,            help='Exp Name')
-parser.add_argument('-PATHtrain',  type=str,   required=True,            help='Training directory')
-parser.add_argument('-PATHresults',type=str,   required=True,            help='Results directory')
-parser.add_argument('-PATHdata',   type=str,   required=True,            help='Dataset directory')
-parser.add_argument('-epoch',      type=int,   required=True,            help='Epoch')
-parser.add_argument('-F_max',      type=float, required=True, nargs='+', help='List of F_max budget values')
+parser.add_argument('-exp_name',           type=str,   required=True,            help='Exp Name')
+parser.add_argument('-PATHtrain',          type=str,   required=True,            help='Training directory')
+parser.add_argument('-PATHresults',        type=str,   required=True,            help='Results directory')
+parser.add_argument('-PATHdata',           type=str,   required=True,            help='Dataset directory')
+parser.add_argument('-epoch',              type=int,   required=True,            help='Epoch')
+parser.add_argument('-distance_threshold', type=float, required=True, nargs='+', help='List of distance thresholds')
 
 args = parser.parse_args()
 
@@ -40,13 +40,10 @@ print('Num Params:', num_params)
 print('Num Nodes:', num_nodes)
 
 # =====================================================
-# Dataset (test set for loss_coloring)
+# Dataset (full test set for S accumulation)
 
-test_data      = MNIST(root=args.PATHdata, train=False, transform=ToTensor())
-test_gen       = DataLoader(dataset=test_data, batch_size=100, shuffle=False)
-x_test, y_test = next(iter(test_gen))
-x_test         = x_test.view(-1, 784).to(dev)
-y_test         = y_test.to(dev)
+test_data = MNIST(root=args.PATHdata, train=False, transform=ToTensor())
+test_gen  = DataLoader(dataset=test_data, batch_size=500, shuffle=False)
 
 criterion = CrossEntropyLoss()
 
@@ -55,33 +52,29 @@ criterion = CrossEntropyLoss()
 
 data = []
 
-for F_max in args.F_max:
-    print(f'F_max: {F_max}')
+for thr in args.distance_threshold:
+    print(f'distance_threshold: {thr}')
 
-    print('Coloring')
-
-    net.loss_coloring(x_test, y_test, criterion, F_max)
+    net.loss_coloring(test_gen, criterion, thr)
     num_colors     = net.num_colors('loss')
     num_nodes_loss = sum(num_colors)
 
-    print('Collapse')
-
-    net_loss       = net.collapse_loss_version()
+    net_loss        = net.collapse_loss_version()
     num_params_loss = sum(p.numel() for p in net_loss.parameters())
 
-    name_loss   = args.exp_name + '_epoch_' + str(args.epoch) + f'_loss_Fmax_{F_max}'
+    name_loss   = args.exp_name + '_epoch_' + str(args.epoch) + f'_loss_thr_{thr}'
     loss_folder = args.PATHtrain + name_loss + '/checkpoints/'
     if not os.path.exists(loss_folder): os.makedirs(loss_folder)
     torch.save(net_loss, loss_folder + 'model_batch_0.pth')
 
     data.append({
-        'F_max':              F_max,
-        'num_colors_l1':      num_colors[0],
-        'num_colors_l2':      num_colors[1],
-        'num_colors_l3':      num_colors[2],
-        'num_nodes_loss':     num_nodes_loss,
-        'reduction_nodes':    num_nodes_loss / num_nodes,
-        'num_params_loss':    num_params_loss,
+        'distance_threshold':  thr,
+        'num_colors_l1':       num_colors[0],
+        'num_colors_l2':       num_colors[1],
+        'num_colors_l3':       num_colors[2],
+        'num_nodes_loss':      num_nodes_loss,
+        'reduction_nodes':     num_nodes_loss / num_nodes,
+        'num_params_loss':     num_params_loss,
         'reduction_pars_loss': num_params_loss / num_params,
     })
 
