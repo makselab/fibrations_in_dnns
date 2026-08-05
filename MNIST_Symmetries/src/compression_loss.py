@@ -58,9 +58,13 @@ data = []
 for F_max in args.F_max:
     print(f'F_max: {F_max}')
 
+    print('Coloring')
+
     net.loss_coloring(x_test, y_test, criterion, F_max)
     num_colors     = net.num_colors('loss')
     num_nodes_loss = sum(num_colors)
+
+    print('Collapse')
 
     net_loss       = net.collapse_loss_version()
     num_params_loss = sum(p.numel() for p in net_loss.parameters())

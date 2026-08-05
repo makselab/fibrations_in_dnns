@@ -10,6 +10,12 @@ strategy is a single heap mixing candidates from ALL layers, with a single
 shared F_total accumulator. At each step the cheapest available merge across
 all layers is applied (regardless of sign), and the loop stops as soon as
 the cheapest candidate would exceed the total budget.
+
+Performance note: instead of computing rep @ A @ rep[k] (O(d^2)) on every
+merge_delta call, we maintain Aw[k] = A @ rep[k] for each active cluster k.
+This reduces each merge_delta from O(neighbors * d^2) to O(neighbors * d).
+Aw is updated in O(d) per merge using the precomputed Aloc/Across vectors,
+which track A @ b_local and A @ b_cross respectively.
 """
 
 import heapq
@@ -27,12 +33,12 @@ def build_initial_structures(w, S, A):
 
     # b_global[i] = (S @ w)[i]: weighted sum of neighbor features seen by node i
     weighted_features = S @ w
-    M_local  = {i: 0.0                        for i in range(num_nodes)}
-    b_local  = {i: np.zeros(feature_dim)      for i in range(num_nodes)}
+    M_local  = {i: 0.0                         for i in range(num_nodes)}
+    b_local  = {i: np.zeros(feature_dim)       for i in range(num_nodes)}
     b_global = {i: weighted_features[i].copy() for i in range(num_nodes)}
-    rep      = {i: w[i].copy()                for i in range(num_nodes)}
-    M_cross  = {i: {}                         for i in range(num_nodes)}
-    b_cross  = {i: {}                         for i in range(num_nodes)}
+    rep      = {i: w[i].copy()                 for i in range(num_nodes)}
+    M_cross  = {i: {}                          for i in range(num_nodes)}
+    b_cross  = {i: {}                          for i in range(num_nodes)}
 
     # Parse sparse adjacency into local (diagonal) and cross (off-diagonal) terms
     S_coo = S.tocoo()
@@ -50,15 +56,21 @@ def build_initial_structures(w, S, A):
     return (M_local, b_local, b_global, rep, M_cross, b_cross, nodes)
 
 
-def _F_diag(mass_k, rep_k, b_global_k, A):
-    """Diagonal term of the objective F for a single cluster k."""
-    return float(mass_k * (rep_k @ A @ rep_k) - 2 * (rep_k @ A @ b_global_k))
+def _F_diag(mass_k, rep_k, b_global_k, Aw_k):
+    """
+    Diagonal term of the objective F for cluster k.
+    Aw_k = A @ rep_k (precomputed); avoids O(d^2) matrix products.
+    """
+    return float(mass_k * np.dot(Aw_k, rep_k) - 2.0 * np.dot(Aw_k, b_global_k))
 
 
-def merge_delta(a, b, M_local, b_local, b_global, rep, M_cross, b_cross, A):
+def merge_delta(a, b, M_local, b_local, b_global, rep, M_cross, b_cross, Aw, Aloc, Across):
     """
     Compute the change in F (delta) from merging clusters a and b,
     and return the state of the resulting merged cluster c.
+
+    All A-weighted inner products are computed as O(d) dot products using
+    Aw[k] = A @ rep[k], Aloc[k] = A @ b_local[k], Across[k][j] = A @ b_cross[k][j].
     """
     feature_dim = b_global[a].shape[0]
     zero = np.zeros(feature_dim)
@@ -73,30 +85,32 @@ def merge_delta(a, b, M_local, b_local, b_global, rep, M_cross, b_cross, A):
     b_local_c  = b_local[a] + b_local[b] + b_ab + b_ba
     b_global_c = b_global[a] + b_global[b]
 
+    # Aw_c = A @ rep_c derived from Aloc (O(d), no matrix multiply)
+    Aloc_c = Aloc[a] + Aloc[b] + Across[a].get(b, zero) + Across[b].get(a, zero)
     if M_c > 1e-15:
         rep_c = b_local_c / M_c
+        Aw_c  = Aloc_c / M_c
     else:
         rep_c = 0.5 * (rep[a] + rep[b])
+        Aw_c  = 0.5 * (Aw[a] + Aw[b])
 
     neighbors = (set(M_cross[a]) | set(M_cross[b])) - {a, b}
 
     # Cost before merge: diagonal terms of a and b plus their cross-interaction
-    F_before = (_F_diag(M_local[a], rep[a], b_global[a], A)
-                + _F_diag(M_local[b], rep[b], b_global[b], A)
-                + 2 * M_ab * (rep[a] @ A @ rep[b]))
+    F_before = (_F_diag(M_local[a], rep[a], b_global[a], Aw[a]) + _F_diag(M_local[b], rep[b], b_global[b], Aw[b]) + 2 * M_ab * np.dot(Aw[a], rep[b]))
     for k in neighbors:
         M_ak = M_cross[a].get(k, 0.0)
         M_bk = M_cross[b].get(k, 0.0)
-        F_before += 2 * M_ak * (rep[a] @ A @ rep[k]) + 2 * M_bk * (rep[b] @ A @ rep[k])
+        F_before += 2 * M_ak * np.dot(Aw[a], rep[k]) + 2 * M_bk * np.dot(Aw[b], rep[k])
 
     # Cost after merge: diagonal term of c plus its cross-interactions with neighbors
-    F_after = _F_diag(M_c, rep_c, b_global_c, A)
+    F_after = _F_diag(M_c, rep_c, b_global_c, Aw_c)
     for k in neighbors:
         M_ck = M_cross[a].get(k, 0.0) + M_cross[b].get(k, 0.0)
-        F_after += 2 * M_ck * (rep_c @ A @ rep[k])
+        F_after += 2 * M_ck * np.dot(Aw_c, rep[k])
 
     delta = F_after - F_before
-    return delta, rep_c, M_c, b_local_c, b_global_c
+    return delta, rep_c, M_c, b_local_c, b_global_c, Aw_c, Aloc_c
 
 
 # ------------------------------------------------------------------
@@ -106,13 +120,30 @@ def merge_delta(a, b, M_local, b_local, b_global, rep, M_cross, b_cross, A):
 class LayerState:
     """Holds the mutable clustering state for one layer."""
     __slots__ = ("M_local", "b_local", "b_global", "rep", "M_cross",
-                 "b_cross", "nodes", "active", "new_id_gen", "A")
+                 "b_cross", "nodes", "active", "new_id_gen",
+                 "Aw", "Aloc", "Across")
 
     def __init__(self, w, S, A):
-        (self.M_local, self.b_local, self.b_global, self.rep, self.M_cross, self.b_cross, self.nodes) = build_initial_structures(w, S, A)
-        self.active = set(self.nodes.keys())
+        (self.M_local, self.b_local, self.b_global, self.rep,
+         self.M_cross, self.b_cross, self.nodes) = build_initial_structures(w, S, A)
+
+        self.active     = set(self.nodes.keys())
         self.new_id_gen = itertools.count(max(self.active) + 1 if self.active else 0)
-        self.A = A
+
+        # Batch precompute Aw[j] = A @ w[j] for all initial nodes (one BLAS call)
+        Aw_matrix = w @ A                                        # (n, d), uses A symmetric
+        self.Aw   = {j: Aw_matrix[j].copy() for j in range(w.shape[0])}
+
+        # Aloc[j] = A @ b_local[j].  Initially b_local[j] = M_local[j] * w[j]
+        # so Aloc[j] = M_local[j] * Aw[j].
+        self.Aloc = {j: self.M_local[j] * self.Aw[j] for j in range(w.shape[0])}
+
+        # Across[j][k] = A @ b_cross[j][k].  Initially b_cross[j][k] = M_cross[j][k] * w[k]
+        # so Across[j][k] = M_cross[j][k] * Aw[k].
+        self.Across = {
+            j: {k: self.M_cross[j][k] * self.Aw[k] for k in self.M_cross[j]}
+            for j in range(w.shape[0])
+        }
 
 
 def cluster_multilayer_shared_budget(layers, F_max_total, verbose=True):
@@ -134,8 +165,10 @@ def cluster_multilayer_shared_budget(layers, F_max_total, verbose=True):
             if j == k or j not in state.active:
                 continue
             node_a, node_b = (k, j) if k < j else (j, k)
-            delta, *_ = merge_delta(node_a, node_b, state.M_local, state.b_local, state.b_global,
-                                    state.rep, state.M_cross, state.b_cross, state.A)
+            delta, *_ = merge_delta(node_a, node_b,
+                                    state.M_local, state.b_local, state.b_global,
+                                    state.rep, state.M_cross, state.b_cross,
+                                    state.Aw, state.Aloc, state.Across)
             heapq.heappush(heap, (delta, layer_idx, node_a, node_b))
 
     # Seed the heap with all candidate merges across all layers
@@ -155,8 +188,11 @@ def cluster_multilayer_shared_budget(layers, F_max_total, verbose=True):
             continue
 
         # Recompute delta with current state and check against budget
-        (delta, rep_c, M_c, b_local_c, b_global_c) = merge_delta(a, b, state.M_local, state.b_local, state.b_global,
-                                   state.rep, state.M_cross, state.b_cross, state.A)
+        (delta, rep_c, M_c, b_local_c, b_global_c,
+         Aw_c, Aloc_c) = merge_delta(a, b,
+                                      state.M_local, state.b_local, state.b_global,
+                                      state.rep, state.M_cross, state.b_cross,
+                                      state.Aw, state.Aloc, state.Across)
 
         if F_total + delta > F_max_total:
             break
@@ -165,29 +201,45 @@ def cluster_multilayer_shared_budget(layers, F_max_total, verbose=True):
         c = next(state.new_id_gen)
         neighbors = (set(state.M_cross[a]) | set(state.M_cross[b])) - {a, b}
 
-        state.M_cross[c] = {}
-        state.b_cross[c] = {}
+        zero_d = np.zeros(rep_c.shape[0])
+
+        state.M_cross[c]  = {}
+        state.b_cross[c]  = {}
+        state.Across[c]   = {}
         for k in neighbors:
             M_ck = state.M_cross[a].get(k, 0.0) + state.M_cross[b].get(k, 0.0)
             state.M_cross[c][k] = M_ck
             state.M_cross[k][c] = M_ck
 
-            state.b_cross[c][k] = (state.b_cross[a].get(k, np.zeros_like(rep_c)) + state.b_cross[b].get(k, np.zeros_like(rep_c)))
-            state.b_cross[k][c] = (state.b_cross[k].get(a, np.zeros_like(rep_c)) + state.b_cross[k].get(b, np.zeros_like(rep_c)))
+            state.b_cross[c][k] = (state.b_cross[a].get(k, zero_d)
+                                   + state.b_cross[b].get(k, zero_d))
+            state.b_cross[k][c] = (state.b_cross[k].get(a, zero_d)
+                                   + state.b_cross[k].get(b, zero_d))
+
+            state.Across[c][k] = (state.Across[a].get(k, zero_d)
+                                  + state.Across[b].get(k, zero_d))
+            state.Across[k][c] = (state.Across[k].get(a, zero_d)
+                                  + state.Across[k].get(b, zero_d))
 
             state.M_cross[k].pop(a, None)
             state.M_cross[k].pop(b, None)
             state.b_cross[k].pop(a, None)
             state.b_cross[k].pop(b, None)
+            state.Across[k].pop(a, None)
+            state.Across[k].pop(b, None)
 
         state.M_local[c]  = M_c
         state.b_local[c]  = b_local_c
         state.b_global[c] = b_global_c
         state.rep[c]      = rep_c
+        state.Aw[c]       = Aw_c
+        state.Aloc[c]     = Aloc_c
         state.nodes[c]    = state.nodes[a] | state.nodes[b]
 
         # Remove merged nodes a and b from all state dicts
-        for table in (state.M_local, state.b_local, state.b_global, state.rep, state.M_cross, state.b_cross, state.nodes):
+        for table in (state.M_local, state.b_local, state.b_global, state.rep,
+                      state.M_cross, state.b_cross, state.nodes,
+                      state.Aw, state.Aloc, state.Across):
             del table[a]
             del table[b]
         state.active.discard(a)
@@ -210,8 +262,8 @@ def cluster_multilayer_shared_budget(layers, F_max_total, verbose=True):
     results = []
     for state in states:
         active_list = list(state.active)
-        clusters = [state.nodes[k] for k in active_list]
-        reps     = [state.rep[k]   for k in active_list]
+        clusters    = [state.nodes[k] for k in active_list]
+        reps        = [state.rep[k]   for k in active_list]
         results.append((clusters, reps))
 
     return results, F_total

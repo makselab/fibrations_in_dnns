@@ -1,0 +1,27 @@
+\contentsline {section}{\numberline {1}Overview}{1}{section.1}%
+\contentsline {section}{\numberline {2}Setup: Network and Notation}{2}{section.2}%
+\contentsline {section}{\numberline {3}Kronecker-Factored Curvature Matrices}{2}{section.3}%
+\contentsline {paragraph}{Interpretation.}{2}{section*.2}%
+\contentsline {paragraph}{Connection to the Fisher information.}{3}{section*.3}%
+\contentsline {section}{\numberline {4}The Clustering Objective}{3}{section.4}%
+\contentsline {section}{\numberline {5}Optimal Representative}{4}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Global Optimum (Coupled System)}{4}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Local (Within-Cluster) Approximation}{4}{subsection.5.2}%
+\contentsline {section}{\numberline {6}Merge Delta}{4}{section.6}%
+\contentsline {paragraph}{Cost before merge.}{4}{section*.4}%
+\contentsline {paragraph}{Merged cluster state.}{5}{section*.5}%
+\contentsline {paragraph}{Cost after merge.}{5}{section*.6}%
+\contentsline {paragraph}{Merge delta.}{5}{section*.7}%
+\contentsline {section}{\numberline {7}Multi-Layer Shared Budget}{5}{section.7}%
+\contentsline {section}{\numberline {8}Greedy Algorithm}{5}{section.8}%
+\contentsline {paragraph}{Lazy deletion.}{5}{section*.8}%
+\contentsline {paragraph}{Recompute before commit.}{5}{section*.9}%
+\contentsline {paragraph}{Termination.}{6}{section*.10}%
+\contentsline {section}{\numberline {9}Sparsification of $S$}{6}{section.9}%
+\contentsline {paragraph}{Justification.}{6}{section*.11}%
+\contentsline {section}{\numberline {10}Collapsing the Network}{6}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Representative Weight: Row-Sum Formula}{7}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}First Hidden Layer ($\ell = 1$)}{7}{subsection.10.2}%
+\contentsline {subsection}{\numberline {10.3}Subsequent Hidden Layers ($\ell > 1$)}{7}{subsection.10.3}%
+\contentsline {subsection}{\numberline {10.4}Output Layer}{8}{subsection.10.4}%
+\contentsline {section}{\numberline {11}Summary of Quantities per Layer}{8}{section.11}%

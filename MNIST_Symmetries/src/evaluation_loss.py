@@ -62,7 +62,7 @@ for F_max in args.F_max:
 
     name_loss   = args.exp_name + '_epoch_' + str(args.epoch) + f'_loss_Fmax_{F_max}'
     loss_folder = args.PATHtrain + name_loss + '/checkpoints/'
-    net_loss    = torch.load(loss_folder + 'model_batch_0.pth', weights_only=False)
+    net_loss    = torch.load(loss_folder + 'model_batch_0.pth')
     net_loss.to(dev)
 
     acc_loss, loss_loss = evaluate(net_loss)

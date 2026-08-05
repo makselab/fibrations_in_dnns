@@ -1,0 +1,433 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{bm}
+
+\geometry{margin=1.2in}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+\title{\textbf{Loss-Based Coloring of Neural Networks}\\
+\large Mathematical Details}
+\author{MNIST Symmetries Project}
+\date{}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\bigskip
+
+% ============================================================
+\section{Overview}
+
+\textit{Loss coloring} is a method for partitioning the hidden nodes of a
+trained MLP into groups (colors, or clusters) such that all nodes in the same
+group can be replaced by a single representative node with the smallest
+possible increase in the training loss.
+
+Unlike coloring based on fibration symmetries---which uses weight-matrix
+geometry---loss coloring uses the \emph{curvature of the loss landscape} to
+measure the cost of merging nodes. The curvature information is captured by
+two Kronecker-factored matrices, $A$ and $S$, borrowed from the EigenDamage
+framework \cite{george2018eigendamage}.
+
+% ============================================================
+\section{Setup: Network and Notation}
+
+Consider an MLP with $L$ hidden layers. Let layer $\ell$ have $n_\ell^{\mathrm{in}}$
+inputs and $n_\ell^{\mathrm{out}}$ outputs. Denote:
+
+\begin{itemize}
+  \item $a^{(\ell)} \in \mathbb{R}^{N \times n_\ell^{\mathrm{in}}}$: matrix of
+        pre-ReLU activations entering layer $\ell$ over a mini-batch of $N$ samples.
+  \item $z^{(\ell)} \in \mathbb{R}^{N \times n_\ell^{\mathrm{out}}}$: matrix of
+        pre-activation outputs of layer $\ell$ (i.e.\ $z^{(\ell)} = a^{(\ell)} W^{(\ell)\top} + \mathbf{1}b^{(\ell)\top}$).
+  \item $g_s^{(\ell)} = \partial \mathcal{L} / \partial z^{(\ell)} \in \mathbb{R}^{N \times n_\ell^{\mathrm{out}}}$:
+        gradient of the loss with respect to the pre-activations.
+  \item $W^{(\ell)} \in \mathbb{R}^{n_\ell^{\mathrm{out}} \times n_\ell^{\mathrm{in}}}$: weight matrix.
+  \item $b^{(\ell)} \in \mathbb{R}^{n_\ell^{\mathrm{out}}}$: bias vector.
+\end{itemize}
+
+To treat weight and bias jointly, define the \emph{augmented} weight vector for
+output node $j$ of layer $\ell$:
+\[
+  w_j^{(\ell)} = \bigl[W^{(\ell)}_{j,:} \;\big|\; b^{(\ell)}_j\bigr]
+  \in \mathbb{R}^{n_\ell^{\mathrm{in}} + 1},
+\]
+assembled into the augmented weight matrix
+$w^{(\ell)} \in \mathbb{R}^{n_\ell^{\mathrm{out}} \times (n_\ell^{\mathrm{in}}+1)}$.
+
+Correspondingly, the augmented activation is
+\[
+  a_{\mathrm{aug}}^{(\ell)} = \bigl[a^{(\ell)} \;\big|\; \mathbf{1}_N\bigr]
+  \in \mathbb{R}^{N \times (n_\ell^{\mathrm{in}}+1)},
+\]
+where $\mathbf{1}_N$ is an $N$-dimensional column of ones (accounting for the bias).
+
+% ============================================================
+\section{Kronecker-Factored Curvature Matrices}
+
+For each hidden layer $\ell$, two symmetric positive semi-definite matrices are
+computed from one forward--backward pass on a mini-batch:
+
+\begin{align}
+  A^{(\ell)} &= \frac{1}{N}\,{a_{\mathrm{aug}}^{(\ell)}}^{\!\top} a_{\mathrm{aug}}^{(\ell)}
+               \in \mathbb{R}^{(n_\ell^{\mathrm{in}}+1)\times(n_\ell^{\mathrm{in}}+1)}, \label{eq:A}\\[4pt]
+  S^{(\ell)} &= \frac{1}{N}\,{g_s^{(\ell)}}^{\!\top} g_s^{(\ell)}
+               \in \mathbb{R}^{n_\ell^{\mathrm{out}}\times n_\ell^{\mathrm{out}}}. \label{eq:S}
+\end{align}
+
+\paragraph{Interpretation.}
+$A^{(\ell)}_{kk'} = \mathbb{E}\bigl[a_{\mathrm{aug},k}^{(\ell)}\,a_{\mathrm{aug},k'}^{(\ell)}\bigr]$
+is the second-order statistics of the incoming activations.
+$S^{(\ell)}_{jj'} = \mathbb{E}\bigl[g_{s,j}^{(\ell)}\,g_{s,j'}^{(\ell)}\bigr]$
+measures the co-sensitivity of the loss to the pre-activations of nodes $j$
+and $j'$. In particular, $S_{jj}^{(\ell)}$ is large when the loss is highly
+sensitive to node $j$, and $S_{jj'}^{(\ell)}$ is large when nodes $j$ and
+$j'$ are simultaneously sensitive (their gradients co-vary).
+
+\paragraph{Connection to the Fisher information.}
+Under the Kronecker-factored approximation of the Fisher information
+matrix $\mathcal{F} \approx A \otimes S$ (EigenDamage, \cite{george2018eigendamage}),
+the second-order change in loss when the $j$-th row of $w^{(\ell)}$ is shifted
+by $\delta w_j$ is approximately
+\[
+  \Delta\mathcal{L}_j \approx \tfrac{1}{2}\,S_{jj}^{(\ell)}\,\delta w_j^{\top} A^{(\ell)}\,\delta w_j.
+\]
+When merging nodes $j$ and $j'$ into a single representative $r_c$, the
+shifts are $\delta w_j = r_c - w_j$ for every $j$ in cluster $c$.
+
+% ============================================================
+\section{The Clustering Objective}
+
+Let $\mathcal{C} = \{c_1, c_2, \ldots\}$ be a partition of the output nodes
+of layer $\ell$ (we drop the layer superscript for clarity). Let $r_c \in
+\mathbb{R}^{n_\ell^{\mathrm{in}}+1}$ be the representative of cluster $c$.
+Define the total cost:
+
+\begin{equation}
+  \boxed{F(\mathcal{C}, \{r_c\}) = \sum_{j,\,j'=1}^{n} S_{jj'}\,
+  (w_j - r_{c(j)})^{\top} A\,(w_{j'} - r_{c(j')})}
+  \label{eq:F_total}
+\end{equation}
+
+where $c(j)$ denotes the cluster containing node $j$, and $n = n_\ell^{\mathrm{out}}$.
+
+\begin{remark}
+This is the full bilinear form weighted by $S$. When $S$ is diagonal, the
+cross terms $S_{jj'}$ for $j \neq j'$ vanish and one recovers the simpler
+sum of diagonal EigenDamage costs $\sum_j S_{jj}(w_j - r_{c(j)})^\top A
+(w_j - r_{c(j)})$.
+\end{remark}
+
+Expanding \eqref{eq:F_total} by grouping same-cluster and cross-cluster terms:
+
+\begin{equation}
+  F = \underbrace{\sum_{c}\sum_{j,j'\in c} S_{jj'}(w_j - r_c)^\top A (w_{j'} - r_c)}_{F_{\mathrm{within}}}
+  + \underbrace{\sum_{c \neq c'}\sum_{j\in c,\,j'\in c'} S_{jj'}(w_j - r_c)^\top A (w_{j'} - r_{c'})}_{F_{\mathrm{cross}}}.
+  \label{eq:F_split}
+\end{equation}
+
+Expanding and collecting by cluster:
+
+\begin{equation}
+  F = \sum_c \Bigl[M_c\,r_c^\top A\,r_c - 2\,r_c^\top A\,\beta_c\Bigr]
+    + 2\sum_{c < c'} M_{cc'}\,r_c^\top A\,r_{c'} + \mathrm{const},
+  \label{eq:F_expanded}
+\end{equation}
+
+where the constant does not depend on the coloring or representatives, and:
+\begin{align}
+  M_c      &= \sum_{j,j'\in c} S_{jj'},       \label{eq:M_c}\\
+  M_{cc'}  &= \sum_{j\in c,\,j'\in c'} S_{jj'},\label{eq:M_cc}\\
+  \beta_c  &= \sum_{j\in c}\sum_{j'=1}^{n} S_{jj'}\,w_{j'}
+             = (S\,w)_{c,:} \quad \text{(rows of $Sw$ summed over cluster $c$)}.
+             \label{eq:beta}
+\end{align}
+
+The per-cluster diagonal term in the code is:
+\[
+  \texttt{\_F\_diag}(M_c,\,r_c,\,\beta_c,\,A)
+  \;=\; M_c\,r_c^\top A\,r_c - 2\,r_c^\top A\,\beta_c.
+\]
+
+In the code, $\beta_c$ is accumulated as \texttt{b\_global[c]} $= \sum_{j\in c}(Sw)_j$,
+and $M_{cc'}$ is stored in \texttt{M\_cross[c][c']}.
+
+% ============================================================
+\section{Optimal Representative}
+
+\subsection{Global Optimum (Coupled System)}
+
+Taking $\partial F / \partial r_c = 0$ from \eqref{eq:F_expanded}:
+\[
+  M_c\,A\,r_c + \sum_{c'\neq c} M_{cc'}\,A\,r_{c'} = A\,\beta_c,
+\]
+which couples all cluster representatives. Solving this global system is
+expensive; instead the code uses a local approximation.
+
+\subsection{Local (Within-Cluster) Approximation}
+
+The representative is optimized considering only the within-cluster terms
+of $F$, i.e.\ treating the cross-cluster contributions as fixed:
+\[
+  r_c^* = \frac{\beta_c^{\mathrm{loc}}}{M_c},
+\]
+where:
+\begin{align}
+  \beta_c^{\mathrm{loc}} &= \sum_{j\in c}\sum_{j'\in c} S_{jj'}\,w_{j'},
+  \label{eq:beta_loc}\\
+  M_c &= \sum_{j,j'\in c} S_{jj'}.
+\end{align}
+
+That is, $r_c^*$ is the weighted average of the weight vectors of nodes in $c$,
+where the weight of node $j'$ is its total within-cluster connectivity $\sum_{j\in c} S_{jj'}$.
+
+In the code:
+\begin{itemize}
+  \item \texttt{b\_local[c]} accumulates $\beta_c^{\mathrm{loc}}$.
+  \item \texttt{M\_local[c]} accumulates $M_c$.
+  \item \texttt{rep[c] = b\_local[c] / M\_local[c]}.
+\end{itemize}
+
+% ============================================================
+\section{Merge Delta}
+
+The core of the greedy algorithm is computing the change in $F$ when two
+clusters $a$ and $b$ are merged into a new cluster $c = a \cup b$.
+
+Only the terms in \eqref{eq:F_expanded} that involve $a$ or $b$ change.
+Let $\mathcal{N}$ be the set of clusters neighboring $a$ or $b$ (but not $a$
+or $b$ themselves).
+
+\paragraph{Cost before merge.}
+
+\begin{align}
+  F_{\mathrm{before}} &= \texttt{\_F\_diag}(M_a, r_a, \beta_a, A)
+                         + \texttt{\_F\_diag}(M_b, r_b, \beta_b, A)
+                         + 2\,M_{ab}\,r_a^\top A\,r_b \notag\\
+                       &\quad + 2\sum_{k\in\mathcal{N}}\bigl(M_{ak}\,r_a^\top A\,r_k
+                         + M_{bk}\,r_b^\top A\,r_k\bigr).
+\end{align}
+
+\paragraph{Merged cluster state.}
+
+\begin{align}
+  M_c           &= M_a + M_b + 2M_{ab}, \label{eq:Mc}\\
+  \beta_c^{\mathrm{loc}} &= \beta_a^{\mathrm{loc}} + \beta_b^{\mathrm{loc}} + b_{ab} + b_{ba}, \label{eq:bloc}\\
+  \beta_c       &= \beta_a + \beta_b \quad\text{(b\_global accumulates linearly)}, \label{eq:bglobal}\\
+  r_c^*         &= \beta_c^{\mathrm{loc}} / M_c, \label{eq:repc}\\
+  M_{ck}        &= M_{ak} + M_{bk} \quad\forall k\in\mathcal{N}, \label{eq:Mck}
+\end{align}
+
+where $b_{ab} = \sum_{j\in a, j'\in b} S_{jj'} w_{j'} = \texttt{b\_cross[a][b]}$
+and $b_{ba}$ symmetrically.
+
+\paragraph{Cost after merge.}
+
+\begin{equation}
+  F_{\mathrm{after}} = \texttt{\_F\_diag}(M_c, r_c^*, \beta_c, A)
+                     + 2\sum_{k\in\mathcal{N}} M_{ck}\,r_c^{*\top} A\,r_k.
+\end{equation}
+
+\paragraph{Merge delta.}
+
+\begin{equation}
+  \boxed{\delta(a, b) = F_{\mathrm{after}} - F_{\mathrm{before}}}
+  \label{eq:delta}
+\end{equation}
+
+A negative $\delta$ means merging $a$ and $b$ \emph{decreases} the loss
+approximation error — these merges are beneficial and should be prioritized.
+
+% ============================================================
+\section{Multi-Layer Shared Budget}
+
+For a network with $L$ hidden layers, the total cost is the sum over all layers:
+\[
+  F_{\mathrm{total}} = \sum_{\ell=1}^{L} F^{(\ell)}.
+\]
+
+A single budget $F_{\max}$ is shared across all layers. The algorithm finds
+the coloring $\mathcal{C}^{(1)}, \ldots, \mathcal{C}^{(L)}$ such that:
+\[
+  F_{\mathrm{total}} \leq F_{\max},
+\]
+while maximizing the number of merged nodes (minimizing the total number of colors).
+
+% ============================================================
+\section{Greedy Algorithm}
+
+\begin{algorithm}[h]
+\caption{Multi-layer loss coloring with shared budget}
+\begin{algorithmic}[1]
+  \State Initialize one \texttt{LayerState} per layer $\ell$ (builds $M_{\mathrm{local}}$,
+         $\beta^{\mathrm{loc}}$, $\beta$, $r$, $M_{\mathrm{cross}}$, $\beta_{\mathrm{cross}}$
+         from $w^{(\ell)}$ and $S^{(\ell)}$).
+  \State Push all candidate pairs $(a, b)$ from all layers onto a min-heap
+         $\mathcal{H}$, keyed by $\delta(a,b)$.
+  \State $F_{\mathrm{total}} \gets 0$.
+  \While{$\mathcal{H}$ is not empty}
+    \State Pop $(\hat\delta, \ell, a, b) \gets \min \mathcal{H}$.
+    \If{$a$ or $b$ is no longer active (stale entry)} \textbf{continue} \EndIf
+    \State Recompute $\delta(a,b)$ with current state (stale $\hat\delta$ may differ).
+    \If{$F_{\mathrm{total}} + \delta > F_{\max}$} \textbf{break} \EndIf
+    \State Merge $a$ and $b$ into new node $c$; update state (eqs.\ \eqref{eq:Mc}--\eqref{eq:Mck}).
+    \State $F_{\mathrm{total}} \gets F_{\mathrm{total}} + \delta$.
+    \State Push new candidates $(c, k)$ for all $k \in \mathcal{N}$ onto $\mathcal{H}$.
+  \EndWhile
+  \State \Return clusters and representatives for each layer.
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Lazy deletion.} When a node is merged, old heap entries involving
+it become stale. Instead of removing them (expensive), the algorithm checks
+at pop time whether both endpoints are still active; stale entries are discarded.
+
+\paragraph{Recompute before commit.} Because $\delta$ is recomputed with the
+current state (after other merges may have changed neighbor representatives),
+the committed $\delta$ is always accurate. This makes the budget check exact.
+
+\paragraph{Termination.}
+The loop breaks as soon as the cheapest available merge (across all layers)
+would exceed the shared budget. Because the heap is a global min-heap, this
+is the globally cheapest remaining merge, so the stopping condition is tight.
+
+% ============================================================
+\section{Sparsification of $S$}
+
+Since $S^{(\ell)} = (g_s^{(\ell)})^\top g_s^{(\ell)} / N$ is a dense
+$n_\ell^{\mathrm{out}} \times n_\ell^{\mathrm{out}}$ matrix, naively all
+$\binom{n_\ell^{\mathrm{out}}}{2}$ node pairs are candidate merges, making
+heap initialization $O(n^2)$ in cost.
+
+To reduce complexity, entries below the $p$-th percentile of $|S^{(\ell)}|$
+are zeroed before building the initial structures:
+\[
+  S^{(\ell)}_{jj'} \gets 0
+  \quad\text{if}\quad
+  |S^{(\ell)}_{jj'}| < \mathrm{percentile}_p(|S^{(\ell)}|).
+\]
+
+\paragraph{Justification.} If $S_{jj'} \approx 0$, the gradients of nodes
+$j$ and $j'$ are nearly uncorrelated. These nodes do not interact strongly
+in the objective $F$, so dropping their cross-term introduces negligible
+error while making the graph sparse. With $p = 90$ (default), roughly the
+top $10\%$ of entries are retained per layer, reducing heap size from
+$O(n^2)$ to $O(n \cdot k)$ where $k$ is the average number of retained
+neighbors.
+
+% ============================================================
+\section{Collapsing the Network}
+
+Once the coloring $\{c(j)\}$ is determined, the network is collapsed: each
+cluster $c$ is replaced by a single output node with representative weight
+vector $r_c$.
+
+\subsection{Representative Weight: Row-Sum Formula}
+
+For cluster $c$ of layer $\ell$, let $c_{\mathrm{idx}} \subseteq \{1,\ldots,n\}$
+be the indices of its member nodes. Define the within-cluster row-sum weights:
+\[
+  \rho_j = \sum_{j' \in c_{\mathrm{idx}}} S^{(\ell)}_{jj'}, \quad j \in c_{\mathrm{idx}},
+  \qquad M_c = \sum_{j \in c_{\mathrm{idx}}} \rho_j.
+\]
+
+The collapsed weight and bias for cluster $c$ are:
+\begin{align}
+  r_c^W &= \frac{1}{M_c}\sum_{j\in c_{\mathrm{idx}}} \rho_j\,W^{(\ell)}_{j,:}
+         = \frac{\bm{\rho}^\top W^{(\ell)}_{c_{\mathrm{idx}},:}}{M_c},
+  \label{eq:rW}\\
+  r_c^b &= \frac{1}{M_c}\sum_{j\in c_{\mathrm{idx}}} \rho_j\,b^{(\ell)}_j
+         = \frac{\bm{\rho}^\top b^{(\ell)}_{c_{\mathrm{idx}}}}{M_c}.
+  \label{eq:rb}
+\end{align}
+
+This is exactly the local representative $r_c^* = \beta_c^{\mathrm{loc}}/M_c$
+from \eqref{eq:repc}, written in terms of the original weight matrices.
+
+\begin{remark}
+When $M_c < \varepsilon$ (all $S$ entries in the subblock are zero or near
+zero, e.g.\ because of sparsification), the uniform fallback
+$\rho_j = 1\;\forall j$, $M_c = |c|$ is used, which gives the simple
+arithmetic mean.
+\end{remark}
+
+\subsection{First Hidden Layer ($\ell = 1$)}
+
+The input dimension does not change, so:
+\[
+  \widetilde{W}^{(1)}_{c,:} = r_c^W \in \mathbb{R}^{n_0},
+  \quad
+  \widetilde{b}^{(1)}_c = r_c^b.
+\]
+
+\subsection{Subsequent Hidden Layers ($\ell > 1$)}
+
+The input to layer $\ell$ has been collapsed by the coloring of layer $\ell-1$
+to $K_{\ell-1}$ dimensions, where cluster $c'$ of layer $\ell-1$ acts as a
+single input unit. The weight from input cluster $c'$ to output cluster $c$ is:
+\begin{equation}
+  \widetilde{W}^{(\ell)}_{c, c'} = \sum_{\substack{i \in c_{\mathrm{idx}}^{(\ell)} \\ j : c^{(\ell-1)}(j) = c'}}
+  \frac{\rho_i}{M_c}\,W^{(\ell)}_{i, j},
+  \label{eq:W_cross}
+\end{equation}
+i.e.\ the $c'$-th component of the collapsed weight vector $r_c^W$ is the
+sum of all components of $r_c^W$ that belonged to cluster $c'$ in the
+previous layer. In code this is:
+\begin{align*}
+  &w_{\mathrm{avg}} = \bm{\rho}^\top W^{(\ell)}_{c_{\mathrm{idx}},:} / M_c
+   \in \mathbb{R}^{n_{\ell-1}^{\mathrm{out}}}, \\
+  &\widetilde{W}^{(\ell)}_{c, c'} \mathrel{+}= w_{\mathrm{avg}}[i]
+   \quad\text{for each }i\text{ with }c^{(\ell-1)}(i) = c'.
+\end{align*}
+
+\subsection{Output Layer}
+
+The output layer is not clustered (its nodes are class logits). Only its
+\emph{input dimension} changes, since the last hidden layer has been collapsed.
+For input cluster $c$ of the last hidden layer:
+\[
+  \widetilde{W}^{(L+1)}_{:, c} = \frac{W^{(L+1)}_{:,\,c_{\mathrm{idx}}}\,\bm{\rho}}{M_c}
+  \in \mathbb{R}^{n_{\mathrm{out}}}.
+  \label{eq:Wout}
+\]
+The output bias is unchanged.
+
+% ============================================================
+\section{Summary of Quantities per Layer}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lll}
+\hline
+\textbf{Symbol} & \textbf{Shape} & \textbf{Meaning} \\
+\hline
+$A^{(\ell)}$ & $(n_\ell^{\mathrm{in}}+1)\times(n_\ell^{\mathrm{in}}+1)$ & Input activation covariance (augmented) \\
+$S^{(\ell)}$ & $n_\ell^{\mathrm{out}}\times n_\ell^{\mathrm{out}}$ & Output gradient covariance \\
+$w^{(\ell)}$ & $n_\ell^{\mathrm{out}}\times(n_\ell^{\mathrm{in}}+1)$ & Augmented weight matrix $[W|b]$ \\
+$M_c$ & scalar & Total within-cluster $S$ mass \\
+$M_{cc'}$ & scalar & Cross-cluster $S$ mass \\
+$\beta_c^{\mathrm{loc}}$ & $n_\ell^{\mathrm{in}}+1$ & Within-cluster weighted sum of rows of $w$ \\
+$\beta_c$ & $n_\ell^{\mathrm{in}}+1$ & All-neighbors weighted sum $(Sw)_{c,:}$ \\
+$r_c^*$ & $n_\ell^{\mathrm{in}}+1$ & Optimal representative $= \beta_c^{\mathrm{loc}}/M_c$ \\
+$\delta(a,b)$ & scalar & Change in $F$ from merging clusters $a$ and $b$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{thebibliography}{9}
+\bibitem{george2018eigendamage}
+  T.~George, C.~Laurent, X.~Bouthillier, N.~Ballas, P.~Vincent,
+  \textit{Fast Approximate Natural Gradient Descent in a Kronecker-Factored
+  Eigenbasis},
+  NeurIPS 2018.
+\end{thebibliography}
+
+\end{document}
