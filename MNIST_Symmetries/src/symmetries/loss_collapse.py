@@ -32,7 +32,7 @@ def collapse_linear(module, S, collapse_in=True, collapse_out=True):
 
         for c in range(num_out_colors):
             c_idx = np.where(out_colors == c)[0]
-            S_c   = S[np.ix_(c_idx, c_idx)]     # principal submatrix (PSD)
+            S_c   = S[np.ix_(c_idx, c_idx)]      # principal submatrix (PSD)
             r     = S_c.sum(axis=1)              # r_i = sum_{j in c} S_{ij}
             M     = r.sum()                      # sum_{i,j in c} S_{ij} >= 0
             if M < 1e-15:
