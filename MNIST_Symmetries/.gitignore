@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Data & models
+train_dir/
+MNIST/
+*.pth
+
+# LaTeX build artifacts
+latex/*.aux
+latex/*.log
+latex/*.out
+latex/*.toc
+latex/*.synctex.gz
+
+# Video
+video/

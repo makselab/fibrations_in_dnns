@@ -21,6 +21,7 @@ parser.add_argument('-PATHresults',        type=str,   required=True,           
 parser.add_argument('-PATHdata',           type=str,   required=True,            help='Dataset directory')
 parser.add_argument('-epoch',              type=int,   required=True,            help='Epoch')
 parser.add_argument('-distance_threshold', type=float, required=True, nargs='+', help='List of distance thresholds')
+parser.add_argument('-version',            type=str,   default='v2',              help='dL and collapse version: v1 or v2')
 
 args = parser.parse_args()
 
@@ -60,7 +61,7 @@ data = []
 for thr in args.distance_threshold:
     print(f'distance_threshold: {thr}')
 
-    name_loss   = args.exp_name + '_epoch_' + str(args.epoch) + f'_loss_thr_{thr}'
+    name_loss   = args.exp_name + '_epoch_' + str(args.epoch) + f'_loss_{args.version}_thr_{thr}'
     loss_folder = args.PATHtrain + name_loss + '/checkpoints/'
     net_loss    = torch.load(loss_folder + 'model_batch_0.pth')
     net_loss.to(dev)
@@ -74,5 +75,5 @@ for thr in args.distance_threshold:
     })
 
 df = pd.DataFrame(data)
-results_filename = args.PATHresults + args.exp_name + f'/Evaluation_LossModels_epoch_{args.epoch}.csv'
+results_filename = args.PATHresults + args.exp_name + f'/Evaluation_LossModels_{args.version}_epoch_{args.epoch}.csv'
 df.to_csv(results_filename, index=False)

@@ -21,3 +21,26 @@ def compute_dL(W, A, S, s_reg=0.01, eps=1e-12):
     dL = 0.5 * P * D
     dL.fill_diagonal_(0.0)
     return dL
+
+
+def compute_dL_v2(W, A, S, eps=1e-12):
+    """
+    W: torch.Tensor (n_out, n_in+1)  augmented weight matrix [W | b]
+    A: torch.Tensor (n_in+1, n_in+1) activation covariance
+    S: torch.Tensor (n_out, n_out)   gradient covariance
+
+    P(i,j) = 1 / (Z_ii + Z_jj - 2*Z_ij)   where Z = pinv(S)
+    """
+
+    G = W @ A @ W.t()
+    g = torch.diag(G)
+    D = g[:, None] + g[None, :] - 2 * G
+
+    Z = torch.linalg.pinv(S)
+    z = torch.diag(Z)
+    denom = z[:, None] + z[None, :] - 2 * Z
+    P = 1.0 / (denom + eps)
+
+    dL = 0.5 * P * D
+    dL.fill_diagonal_(0.0)
+    return dL

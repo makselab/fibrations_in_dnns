@@ -8,6 +8,8 @@ from numpy import cumsum
 from compression_methods import ablation_linear, KFEBottleneck
 from symmetries.loss_coloring import loss_coloring_linear
 from symmetries.loss_collapse import collapse_linear as loss_collapse_linear
+from symmetries.loss_collapse import collapse_linear_v2 as loss_collapse_linear_v2
+from symmetries.dL_matrix import compute_dL, compute_dL_v2
 import copy
 import torch.nn.utils.prune as prune
 from torch.linalg import eigh
@@ -90,6 +92,7 @@ class MLP(Module):
 
 
   def loss_coloring(self, dataloader, criterion, distance_threshold,
+                    dL_fn=compute_dL_v2,
                     clustering_method={'name': 'agg_clustering', 'cfg': {'linkage': 'average'}}):
 
       device  = next(self.parameters()).device
@@ -144,14 +147,14 @@ class MLP(Module):
           W = self.layers[layer_idx].weight.data
           b = self.layers[layer_idx].bias.data
 
-          labels = loss_coloring_linear(W, b, S, A, clustering_method, distance_threshold)
+          labels = loss_coloring_linear(W, b, S, A, clustering_method, distance_threshold, dL_fn=dL_fn)
           colors.append(labels)
           S_matrices.append(S.cpu().numpy())
 
       self.symmetries['loss'] = colors
       self._loss_S            = S_matrices
 
-  def collapse_loss_version(self):
+  def collapse_loss_version(self, collapse_fn=loss_collapse_linear_v2):
       colors          = self.symmetries['loss']
       collapsed_sizes = [unique(c).shape[0] for c in colors]
       mlp = MLP(input_size=self.dims[0], hidden_sizes=collapsed_sizes, num_classes=self.dims[-1])
@@ -170,12 +173,12 @@ class MLP(Module):
 
       # Collapse hidden layers
       for l in range(self.num_layers):
-          coll_layer, _, _ = loss_collapse_linear(self.layers[l], self._loss_S[l])
+          coll_layer, _, _ = collapse_fn(self.layers[l], self._loss_S[l])
           mlp.layers[l].weight.data = coll_layer.weight.data
           mlp.layers[l].bias.data   = coll_layer.bias.data
 
       # Collapse output layer: only input (no output collapse)
-      coll_out, _, _ = loss_collapse_linear(self.layers[self.num_layers], self._loss_S[-1], collapse_in=True, collapse_out=False)
+      coll_out, _, _ = collapse_fn(self.layers[self.num_layers], self._loss_S[-1], collapse_in=True, collapse_out=False)
       mlp.layers[self.num_layers].weight.data = coll_out.weight.data
       mlp.layers[self.num_layers].bias.data   = coll_out.bias.data
 

@@ -6,6 +6,7 @@ PATHtrain='./train_dir/'
 PATHdata='./'
 PATHresults='./results/'
 exp_name='exp_'$1
+version=${2:-v2}
 epoch_idx=599
 
 export PYTHONPATH=src
@@ -22,7 +23,8 @@ python3 src/compression_loss.py -exp_name $exp_name\
                                 -PATHresults $PATHresults\
                                 -PATHdata $PATHdata\
                                 -epoch $epoch_idx\
-                                -distance_threshold $distance_threshold_values
+                                -distance_threshold $distance_threshold_values\
+                                -version $version
 
 # ===========================================================
 # Evaluation Loss Models
@@ -33,4 +35,5 @@ python3 src/evaluation_loss.py -exp_name $exp_name\
                                -PATHresults $PATHresults\
                                -PATHdata $PATHdata\
                                -epoch $epoch_idx\
-                               -distance_threshold $distance_threshold_values
+                               -distance_threshold $distance_threshold_values\
+                               -version $version
