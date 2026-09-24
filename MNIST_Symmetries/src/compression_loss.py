@@ -58,6 +58,16 @@ test_gen  = DataLoader(dataset=test_data, batch_size=500, shuffle=False)
 criterion = CrossEntropyLoss()
 
 # =====================================================
+# dL distributions (computed once before threshold loop)
+
+print('Computing dL distributions...')
+net.loss_coloring(test_gen, criterion, args.distance_threshold[0], dL_fn=dL_fn)
+df_dist = net.dL_distributions(dL_fn=dL_fn)
+dist_filename = args.PATHresults + args.exp_name + f'/dL_distributions_{args.version}_{args.epoch}.csv'
+df_dist.to_csv(dist_filename, index=False)
+print(f'Saved distributions to {dist_filename}')
+
+# =====================================================
 # Loss Coloring & Collapse
 
 data = []

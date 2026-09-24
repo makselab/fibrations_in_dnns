@@ -29,6 +29,7 @@ class MLP(Module):
                      'covering': None,
                      'loss': None}
     self._loss_S     = None
+    self._loss_A     = None
 
   def forward(self,x):
     activations = []
@@ -153,6 +154,7 @@ class MLP(Module):
 
       self.symmetries['loss'] = colors
       self._loss_S            = S_matrices
+      self._loss_A            = [A_sum[i].cpu().numpy() / N_total for i in range(self.num_layers)]
 
   def collapse_loss_version(self, collapse_fn=loss_collapse_linear_v2):
       colors          = self.symmetries['loss']
@@ -183,6 +185,47 @@ class MLP(Module):
       mlp.layers[self.num_layers].bias.data   = coll_out.bias.data
 
       return mlp
+
+  def dL_distributions(self, dL_fn=compute_dL_v2):
+      import pandas as pd
+      percentiles = [0, 1, 5, 10, 25, 50, 75, 90, 95, 99, 100]
+      rows = []
+
+      for layer_idx in range(self.num_layers):
+          S = torch.tensor(self._loss_S[layer_idx])
+          A = torch.tensor(self._loss_A[layer_idx])
+          W = self.layers[layer_idx].weight.data.cpu()
+          b = self.layers[layer_idx].bias.data.cpu()
+          w = torch.cat([W, b.unsqueeze(1)], dim=1)
+
+          G    = w @ A @ w.t()
+          g    = torch.diag(G)
+          D    = (g[:, None] + g[None, :] - 2 * G).numpy()
+
+          dL   = dL_fn(w, A.to(w.device), S.to(w.device))
+          dL   = dL.cpu().numpy()
+
+          s_mean = torch.diag(S).mean().clamp(min=1e-15)
+          S_reg  = S + 1e-3 * s_mean * torch.eye(S.shape[0])
+          Z      = torch.linalg.inv(S_reg)
+          z      = torch.diag(Z)
+          denom  = (z[:, None] + z[None, :] - 2 * Z).clamp(min=1e-12)
+          P      = (1.0 / denom).numpy()
+
+          mask = ~np.eye(S.shape[0], dtype=bool)
+
+          for name, mat in [('S', self._loss_S[layer_idx]),
+                             ('P', P),
+                             ('D', D),
+                             ('dL', dL)]:
+              vals = mat[mask]
+              row  = {'layer': layer_idx, 'matrix': name}
+              row.update({f'p{p}': float(np.percentile(vals, p)) for p in percentiles})
+              row['mean'] = float(vals.mean())
+              row['std']  = float(vals.std())
+              rows.append(row)
+
+      return pd.DataFrame(rows)
 
   def num_colors(self, symmetry='covering'):
       return [unique(colors_layer).shape[0] for colors_layer in self.symmetries[symmetry]]
