@@ -8,7 +8,7 @@ from .dL_matrix import compute_dL, compute_dL_v2
 # ==============================================================================
 # ==============================================================================
 
-def loss_coloring_linear(weights, bias, S, A, clustering_method, distance_thr, dL_fn=compute_dL_v2):
+def loss_coloring_linear(weights, bias, S, A, clustering_method, distance_thr, dL_fn=compute_dL_v2, s_reg=1e-3):
 
     assert is_tensor(weights), "weights must be a PyTorch tensor"
     assert is_tensor(bias),    "bias must be a PyTorch tensor"
@@ -17,7 +17,7 @@ def loss_coloring_linear(weights, bias, S, A, clustering_method, distance_thr, d
 
     w = torch.cat([weights, bias.unsqueeze(1)], dim=1)  # (n_out, n_in+1)
 
-    dL    = dL_fn(w, A, S)
+    dL    = dL_fn(w, A, S, s_reg=s_reg)
     dL_np = dL.detach().cpu().numpy()
 
     dL_max = dL_np.max()

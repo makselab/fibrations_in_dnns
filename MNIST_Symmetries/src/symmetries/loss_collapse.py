@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-def collapse_linear(module, S, collapse_in=True, collapse_out=True):
+def collapse_linear(module, S, collapse_in=True, collapse_out=True, s_reg=None):
     """
     Output collapse  : W_{c,k} = (sum_{i,j in c} S_{ij} w_{i,k}) / (sum_{i,j in c} S_{ij})
     Input  collapse  : sum over input-cluster nodes  (no normalization)
@@ -76,15 +76,16 @@ def collapse_linear(module, S, collapse_in=True, collapse_out=True):
     return module_coll, dW, db
 
 
-def collapse_linear_v2(module, S, collapse_in=True, collapse_out=True):
+def collapse_linear_v2(module, S, collapse_in=True, collapse_out=True, s_reg=1e-3):
     """
-    Output collapse  : W_coll = (P^T S P)^{-1} P^T S W
+    Output collapse  : W_coll = (P^T S_reg P)^{-1} P^T S_reg W
     Input  collapse  : sum over input-cluster nodes  (no normalization)
 
     Args
     ----
     module : nn.Linear with module.in_colors / module.out_colors set
     S      : np.ndarray (dim_out, dim_out) — gradient covariance for output nodes
+    s_reg  : regularization weight (same convention as compute_dL_v2)
     """
     weights = module.weight.data
     bias    = module.bias.data if module.bias is not None else None
@@ -99,19 +100,21 @@ def collapse_linear_v2(module, S, collapse_in=True, collapse_out=True):
         out_colors     = module.out_colors.to(device)
         num_out_colors = int(torch.unique(out_colors).shape[0])
 
-        S_t = torch.tensor(S, dtype=dtype, device=device)       # (dim_out, dim_out)
+        S_t    = torch.tensor(S, dtype=dtype, device=device)    # (dim_out, dim_out)
+        s_mean = torch.diag(S_t).mean().clamp(min=1e-15)
+        S_reg  = (1 - s_reg) * S_t + s_reg * s_mean * torch.eye(dim_out, dtype=dtype, device=device)
 
         # Membership matrix P: (dim_out, num_out_colors)
         P = torch.zeros(dim_out, num_out_colors, dtype=dtype, device=device)
         P.scatter_(1, out_colors.unsqueeze(1), 1.0)
 
-        PtS   = P.t() @ S_t                                      # (num_colors, dim_out)
-        PtSP  = PtS @ P                                          # (num_colors, num_colors)
-        PtSW  = PtS @ weights                                    # (num_colors, dim_in)
-        W_coll = torch.linalg.pinv(PtSP) @ PtSW                 # (num_colors, dim_in)
+        PtS    = P.t() @ S_reg                                   # (num_colors, dim_out)
+        PtSP   = PtS @ P                                         # (num_colors, num_colors)
+        PtSW   = PtS @ weights                                   # (num_colors, dim_in)
+        W_coll = torch.linalg.inv(PtSP) @ PtSW                  # (num_colors, dim_in)
 
         if bias is not None:
-            b_coll = torch.linalg.pinv(PtSP) @ (PtS @ bias)    # (num_colors,)
+            b_coll = torch.linalg.inv(PtSP) @ (PtS @ bias)     # (num_colors,)
         else:
             b_coll = None
     else:

@@ -30,6 +30,7 @@ parser.add_argument('-PATHdata',           type=str,   required=True,           
 parser.add_argument('-epoch',              type=int,   required=True,            help='Epoch')
 parser.add_argument('-distance_threshold', type=float, required=True, nargs='+', help='List of distance thresholds')
 parser.add_argument('-version',            type=str,   default='v2',              help='dL and collapse version: v1 or v2')
+parser.add_argument('-s_reg',              type=float, default=1e-3,              help='Regularization for S matrix')
 
 args = parser.parse_args()
 
@@ -61,7 +62,7 @@ criterion = CrossEntropyLoss()
 # dL distributions (computed once before threshold loop)
 
 print('Computing dL distributions...')
-net.loss_coloring(test_gen, criterion, args.distance_threshold[0], dL_fn=dL_fn)
+net.loss_coloring(test_gen, criterion, args.distance_threshold[0], dL_fn=dL_fn, s_reg=args.s_reg)
 df_dist = net.dL_distributions(dL_fn=dL_fn)
 dist_filename = args.PATHresults + args.exp_name + f'/dL_distributions_{args.version}_{args.epoch}.csv'
 df_dist.to_csv(dist_filename, index=False)
@@ -75,11 +76,11 @@ data = []
 for thr in args.distance_threshold:
     print(f'distance_threshold: {thr}')
 
-    net.loss_coloring(test_gen, criterion, thr, dL_fn=dL_fn)
+    net.loss_coloring(test_gen, criterion, thr, dL_fn=dL_fn, s_reg=args.s_reg)
     num_colors     = net.num_colors('loss')
     num_nodes_loss = sum(num_colors)
 
-    net_loss        = net.collapse_loss_version(collapse_fn=collapse_fn)
+    net_loss        = net.collapse_loss_version(collapse_fn=collapse_fn, s_reg=args.s_reg)
     num_params_loss = sum(p.numel() for p in net_loss.parameters())
 
     name_loss   = args.exp_name + '_epoch_' + str(args.epoch) + f'_loss_{args.version}_thr_{thr}'

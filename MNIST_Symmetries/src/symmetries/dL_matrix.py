@@ -39,7 +39,7 @@ def compute_dL_v2(W, A, S, s_reg=1e-3, eps=1e-12):
     D = g[:, None] + g[None, :] - 2 * G
 
     s_mean = torch.diag(S).mean().clamp(min=1e-15)
-    S_reg  = S + s_reg * s_mean * torch.eye(S.shape[0], device=S.device, dtype=S.dtype)
+    S_reg  = (1-s_reg) * S + s_reg * s_mean * torch.eye(S.shape[0], device=S.device, dtype=S.dtype)
     Z      = torch.linalg.inv(S_reg)
 
     z     = torch.diag(Z)
