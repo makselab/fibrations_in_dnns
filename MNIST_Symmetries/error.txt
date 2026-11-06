@@ -1,0 +1,7 @@
+Computing dL distributions...
+/home/osvaldo/.local/lib/python3.8/site-packages/numpy/lib/function_base.py:4527: RuntimeWarning: invalid value encountered in subtract
+  diff_b_a = subtract(b, a)
+/home/osvaldo/.local/lib/python3.8/site-packages/numpy/core/_methods.py:233: RuntimeWarning: invalid value encountered in subtract
+  x = asanyarray(arr - arrmean)
+Saved distributions to ./results/exp_01/dL_distributions_v2_599.csv
+
