@@ -92,11 +92,7 @@ class MLP(Module):
       self.symmetries['covering'] = colors
 
 
-  def loss_coloring(self, dataloader, criterion, distance_threshold,
-                    dL_fn=compute_dL_v2,
-                    s_reg=1e-3,
-                    clustering_method={'name': 'agg_clustering', 'cfg': {'linkage': 'average'}}):
-
+  def accumulate_loss_stats(self, dataloader, criterion):
       device  = next(self.parameters()).device
       A_sum   = [None] * self.num_layers
       S_sum   = [None] * self.num_layers
@@ -130,7 +126,7 @@ class MLP(Module):
               ones  = torch.ones(N, 1, device=device)
               a_aug = torch.cat([a, ones], dim=1)
 
-              A_batch = a_aug.t() @ a_aug   # sum over batch
+              A_batch = a_aug.t() @ a_aug
               S_batch = gs.t()   @ gs
 
               if A_sum[layer_idx] is None:
@@ -140,22 +136,30 @@ class MLP(Module):
                   A_sum[layer_idx] += A_batch
                   S_sum[layer_idx] += S_batch
 
-      colors     = []
-      S_matrices = []
-      for layer_idx in range(self.num_layers):
-          A = A_sum[layer_idx] / N_total
-          S = S_sum[layer_idx] / N_total
+      self._loss_S = [(S_sum[i] / N_total).cpu().numpy() for i in range(self.num_layers)]
+      self._loss_A = [(A_sum[i] / N_total).cpu().numpy() for i in range(self.num_layers)]
 
+  def apply_loss_coloring(self, distance_threshold,
+                          dL_fn=compute_dL_v2,
+                          s_reg=1e-3,
+                          clustering_method={'name': 'agg_clustering', 'cfg': {'linkage': 'average'}}):
+      device = next(self.parameters()).device
+      colors = []
+      for layer_idx in range(self.num_layers):
+          S = torch.tensor(self._loss_S[layer_idx], device=device)
+          A = torch.tensor(self._loss_A[layer_idx], device=device)
           W = self.layers[layer_idx].weight.data
           b = self.layers[layer_idx].bias.data
-
           labels = loss_coloring_linear(W, b, S, A, clustering_method, distance_threshold, dL_fn=dL_fn, s_reg=s_reg)
           colors.append(labels)
-          S_matrices.append(S.cpu().numpy())
-
       self.symmetries['loss'] = colors
-      self._loss_S            = S_matrices
-      self._loss_A            = [A_sum[i].cpu().numpy() / N_total for i in range(self.num_layers)]
+
+  def loss_coloring(self, dataloader, criterion, distance_threshold,
+                    dL_fn=compute_dL_v2,
+                    s_reg=1e-3,
+                    clustering_method={'name': 'agg_clustering', 'cfg': {'linkage': 'average'}}):
+      self.accumulate_loss_stats(dataloader, criterion)
+      self.apply_loss_coloring(distance_threshold, dL_fn=dL_fn, s_reg=s_reg, clustering_method=clustering_method)
 
   def collapse_loss_version(self, collapse_fn=loss_collapse_linear_v2, s_reg=1e-3):
       colors          = self.symmetries['loss']
@@ -187,7 +191,7 @@ class MLP(Module):
 
       return mlp
 
-  def dL_distributions(self, dL_fn=compute_dL_v2):
+  def dL_distributions(self, dL_fn=compute_dL_v2, s_reg=1e-3):
       import pandas as pd
       percentiles = [0, 1, 5, 10, 25, 50, 75, 90, 95, 99, 100]
       rows = []
@@ -207,7 +211,7 @@ class MLP(Module):
           dL   = dL.cpu().numpy()
 
           s_mean = torch.diag(S).mean().clamp(min=1e-15)
-          S_reg  = S + 1e-3 * s_mean * torch.eye(S.shape[0])
+          S_reg  = S + s_reg * s_mean * torch.eye(S.shape[0])
           Z      = torch.linalg.inv(S_reg)
           z      = torch.diag(Z)
           denom  = (z[:, None] + z[None, :] - 2 * Z).clamp(min=1e-12)

@@ -61,9 +61,9 @@ criterion = CrossEntropyLoss()
 # =====================================================
 # dL distributions (computed once before threshold loop)
 
-print('Computing dL distributions...')
-net.loss_coloring(test_gen, criterion, args.distance_threshold[0], dL_fn=dL_fn, s_reg=args.s_reg)
-df_dist = net.dL_distributions(dL_fn=dL_fn)
+print('Accumulating A and S statistics...')
+net.accumulate_loss_stats(test_gen, criterion)
+df_dist = net.dL_distributions(dL_fn=dL_fn, s_reg=args.s_reg)
 dist_filename = args.PATHresults + args.exp_name + f'/dL_distributions_{args.version}_{args.epoch}.csv'
 df_dist.to_csv(dist_filename, index=False)
 print(f'Saved distributions to {dist_filename}')
@@ -76,7 +76,7 @@ data = []
 for thr in args.distance_threshold:
     print(f'distance_threshold: {thr}')
 
-    net.loss_coloring(test_gen, criterion, thr, dL_fn=dL_fn, s_reg=args.s_reg)
+    net.apply_loss_coloring(thr, dL_fn=dL_fn, s_reg=args.s_reg)
     num_colors     = net.num_colors('loss')
     num_nodes_loss = sum(num_colors)
 

@@ -20,14 +20,21 @@ from model import MLP
 # Load args, paths, device.
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-exp_name', type=str, required=True, help='Exp Name')
+parser.add_argument('-exp_name', type=str, required=True,  help='Exp Name')
 parser.add_argument('-PATHtrain', type=str, required=True, help='Training directory')
-parser.add_argument('-PATHcfg', type=str, required=True, help='Config directory')
+parser.add_argument('-PATHcfg',   type=str, required=True, help='Config directory')
+parser.add_argument('-cfg_name',  type=str, default=None,  help='Config file name (defaults to exp_name)')
+parser.add_argument('-seed',      type=int, default=None,  help='Random seed for reproducibility')
 
 args = parser.parse_args()
 
-with open(args.PATHcfg + args.exp_name + '.json', 'r') as f:
+cfg_name = args.cfg_name if args.cfg_name is not None else args.exp_name
+with open(args.PATHcfg + cfg_name + '.json', 'r') as f:
     cfg = json.load(f)
+
+if args.seed is not None:
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
 
 dataPATH = cfg['data']['dataset_path']
 
